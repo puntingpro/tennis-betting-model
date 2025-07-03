@@ -1,0 +1,41 @@
+# ─── Python artifacts ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ─── Virtual environments ────────────────────────────────────────────────────────
+.venv/
+venv/
+ENV/
+
+# ─── Data & dumps ────────────────────────────────────────────────────────────────
+# ignore all data folders at once
+data/
+parsed/
+
+# also ignore any compressed dumps
+*.bz2
+
+# ─── Model artifacts ─────────────────────────────────────────────────────────────
+models/
+rf_model.json
+
+# ─── Logs and other generated files ─────────────────────────────────────────────
+*.log
+*.txt
+
+# ─── OS‐specific and IDE settings ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ─── (Optional extras) ──────────────────────────────────────────────────────────
+# Byte-compiled / optimized files
+*.pyc
+*.pyo
+*.pyd
+
+# Backup / swap files
+*~
+*.swp
