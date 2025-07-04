@@ -1,3 +1,5 @@
+# src/scripts/modeling/train_eval_model.py
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +14,7 @@ from xgboost import XGBClassifier
 
 from scripts.utils.file_utils import load_dataframes
 from scripts.utils.git_utils import get_git_hash
-from scripts.utils.logger import log_info, log_success, setup_logging
+from scripts.utils.logger import log_info, log_success, log_warning, setup_logging
 from scripts.utils.schema import normalize_columns, patch_winner_column
 
 
@@ -32,6 +34,14 @@ def run_train_eval_model(
     if df.empty:
         raise ValueError("No valid data to train on after preprocessing.")
 
+    # --- FINAL FIX ---
+    # Explicitly drop rows where the grouping key ('match_id') is missing.
+    initial_rows = len(df)
+    df.dropna(subset=['match_id'], inplace=True)
+    if len(df) < initial_rows:
+        log_warning(f"Dropped {initial_rows - len(df)} rows due to missing match_id.")
+    # --- END FINAL FIX ---
+
     excluded = {"winner", "match_id", "player_1", "player_2"}
     feature_cols = [
         c
@@ -41,11 +51,8 @@ def run_train_eval_model(
     if not feature_cols:
         raise ValueError("No numeric feature columns found after preprocessing.")
     
-    initial_rows = len(df)
-    df = df.dropna(subset=feature_cols)
-    if df.empty:
-        raise ValueError("All rows were dropped due to missing feature values.")
-    log_info(f"Dropped {initial_rows - len(df)} rows with missing features.")
+    log_info(f"Imputing missing values in {len(feature_cols)} feature columns with 0.")
+    df[feature_cols] = df[feature_cols].fillna(0)
     
     log_info(f"Training model using {len(feature_cols)} features: {feature_cols}")
     
@@ -53,23 +60,25 @@ def run_train_eval_model(
     y = df["winner"]
 
     if y.nunique() < 2:
-        raise ValueError(f"The target variable 'winner' has only {y.nunique()} unique value(s). Training cannot proceed.")
+        raise ValueError(f"The target variable 'winner' has only {y.nunique()} unique value(s) after processing. Training cannot proceed.")
 
-    if "match_id" not in df.columns:
-        raise ValueError("'match_id' column is required for grouped train/test split.")
     groups = df["match_id"]
+    
     gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
     train_idx, test_idx = next(gss.split(X, y, groups))
-    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    
+    X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
+    X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
+
+    if y_train.nunique() < 2:
+         raise ValueError("The training data partition has only one class. The dataset is likely too small or imbalanced even after imputation.")
 
     if algorithm == "rf":
         model = RandomForestClassifier(n_estimators=100, random_state=random_state, class_weight='balanced')
     elif algorithm == "logreg":
         model = LogisticRegression(max_iter=500, random_state=random_state, class_weight='balanced')
     elif algorithm == "xgb":
-        # For XGBoost, you handle imbalance with 'scale_pos_weight'
-        scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+        scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum() if (y_train == 1).sum() > 0 else 1
         model = XGBClassifier(eval_metric="logloss", random_state=random_state, scale_pos_weight=scale_pos_weight)
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
@@ -79,7 +88,7 @@ def run_train_eval_model(
     y_prob = (
         model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
     )
-    auc = roc_auc_score(y_test, y_prob) if y_prob is not None else None
+    auc = roc_auc_score(y_test, y_prob) if y_prob is not None and y_test.nunique() > 1 else None
     report = classification_report(y_test, y_pred, digits=3, output_dict=False)
     meta = {
         "timestamp": datetime.now().isoformat(),

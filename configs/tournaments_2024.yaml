@@ -1,5 +1,5 @@
 defaults:
-  model_file: models/rf_model.joblib
+  model_file: models/xgb_model.joblib
 
 tournaments:
   - label: ausopen_2024_atp

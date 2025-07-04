@@ -100,12 +100,14 @@ def run_pipeline_for_label(
             result = None
             if dry_run:
                 log_info(f"[DRY-RUN] Would write to {output_path}")
-            # --- UPDATED SECTION: ADDED HANDLER FOR 'features' STAGE ---
+            elif stage == "player_features": # MODIFIED: Added specific handler
+                df_sackmann = pd.read_csv(input_paths["sackmann_csv"])
+                df_snapshots = pd.read_csv(input_paths["snapshots_csv"])
+                result = fn(df_sackmann, df_snapshots)
             elif stage == "features":
                 df_merged = pd.read_csv(input_paths["merged_matches_csv"])
                 df_player_features = pd.read_csv(input_paths["player_features_csv"])
                 result = fn(df_merged, df_player_features)
-            # --- END UPDATED SECTION ---
             elif stage == "detect":
                 df_pred = pd.read_csv(input_paths["predictions_csv"])
                 params = {

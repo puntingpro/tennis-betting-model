@@ -27,6 +27,7 @@ def assign_selection_ids(
     unique_runner_names = snapshots_df["runner_name"].dropna().unique().tolist()
 
     log_info("Cleaning player names from historical data using fuzzy matching...")
+    # player_1_clean will be the winner, player_2_clean will be the loser
     sackmann_df["player_1_clean"] = sackmann_df["winner_name"].apply(
         lambda x: find_fuzzy_match(x, unique_runner_names)
     )
@@ -34,35 +35,43 @@ def assign_selection_ids(
         lambda x: find_fuzzy_match(x, unique_runner_names)
     )
 
+    # Standardize date formats before matching
+    sackmann_df['tourney_date'] = pd.to_datetime(sackmann_df['tourney_date'], format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    snapshots_df['timestamp_date'] = pd.to_datetime(snapshots_df['timestamp'], unit='ms').dt.strftime('%Y-%m-%d')
+
+
     def find_market_id_for_cleaned_match(row):
-        p1_clean = row["player_1_clean"]
-        p2_clean = row["player_2_clean"]
-        if not p1_clean or not p2_clean:
-            return None
-        p1_markets = set(snapshots_df[snapshots_df["runner_name"] == p1_clean]["market_id"])
-        p2_markets = set(snapshots_df[snapshots_df["runner_name"] == p2_clean]["market_id"])
+        p1_clean, p2_clean, match_date = row["player_1_clean"], row["player_2_clean"], row["tourney_date"]
+        if not p1_clean or not p2_clean: return None
+        
+        possible_markets = snapshots_df[snapshots_df['timestamp_date'] == match_date]
+        if possible_markets.empty: return None
+
+        p1_markets = set(possible_markets[possible_markets["runner_name"] == p1_clean]["market_id"])
+        p2_markets = set(possible_markets[possible_markets["runner_name"] == p2_clean]["market_id"])
+        
         common_markets = p1_markets.intersection(p2_markets)
-        if common_markets:
-            return common_markets.pop()
-        log_warning(f"No common market found for cleaned players: {p1_clean} and {p2_clean}")
-        return None
+        return common_markets.pop() if common_markets else None
 
     log_info("Finding market IDs for cleaned player names...")
     sackmann_df["market_id"] = sackmann_df.apply(find_market_id_for_cleaned_match, axis=1)
     sackmann_df.dropna(subset=["market_id", "player_1_clean"], inplace=True)
     sackmann_df["match_id"] = sackmann_df["market_id"]
 
-    # --- UPDATED SECTION ---
-    # Ensure 'surface' is carried through the merge
+    # --- MODIFIED SECTION ---
+    # The winner's name is in 'player_1_clean'. We add it to the columns to merge.
     columns_to_merge = ["match_id", "player_1_clean", "player_2_clean", "tourney_date", "surface"]
     merged_df = matches_df.merge(
         sackmann_df[columns_to_merge], on="match_id", how="left"
     )
-    # --- END UPDATED SECTION ---
 
-    merged_df["winner"] = (merged_df["runner_name"] == merged_df["player_1_clean"]).astype(int)
+    # CRITICAL FIX: Assign the winner's NAME to the 'winner' column.
+    merged_df["winner"] = merged_df["player_1_clean"]
+    
+    # Now assign the player names for the match.
     merged_df['player_1'] = merged_df['player_1_clean']
     merged_df['player_2'] = merged_df['player_2_clean']
+    # --- END MODIFIED SECTION ---
 
     merged_df["selection_id_1"] = merged_df.apply(
         lambda r: match_player_to_selection_id(

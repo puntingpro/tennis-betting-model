@@ -12,40 +12,46 @@ def build_odds_features(df: pd.DataFrame, player_features_df: pd.DataFrame) -> p
     and merges in the pre-calculated player features using a robust mapping strategy.
     """
     df = normalize_columns(df.copy())
+    player_features_df = normalize_columns(player_features_df.copy())
 
-    required_cols = ['match_id', 'player_1', 'player_2', 'final_ltp', 'winner', 'tourney_date', 'surface']
-    if not all(col in df.columns for col in required_cols):
-        log_warning(f"Missing one of {required_cols}; cannot build odds features.")
-        return enforce_schema(pd.DataFrame(), schema_name="features")
+    # --- DATA PREPARATION AND TYPE ENFORCEMENT ---
+    log_info("Preparing and cleaning data for feature building...")
+    
+    key_cols = ['tourney_date', 'player_1', 'player_2', 'surface']
+    
+    df['tourney_date'] = pd.to_datetime(df['tourney_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+    player_features_df['tourney_date'] = pd.to_datetime(player_features_df['tourney_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+    
+    df.dropna(subset=['match_id', 'player_1', 'player_2'], inplace=True)
+    
+    for col in key_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+        if col in player_features_df.columns:
+            player_features_df[col] = player_features_df[col].astype(str)
 
-    # 1. Create a clean, one-row-per-match DataFrame as the base
+    # --- FEATURE MERGING ---
+    log_info("Merging player features...")
+    
     matches_base = df[['match_id', 'player_1', 'player_2', 'winner', 'tourney_date', 'surface']].drop_duplicates(subset=['match_id']).reset_index(drop=True)
-
-    # 2. Create a simple dictionary to map odds: (match_id, runner_name) -> final_ltp
+    
     odds_map = df.set_index(['match_id', 'runner_name'])['final_ltp'].to_dict()
-
-    # 3. Map the odds for both players onto the base DataFrame
     matches_base['odds_1'] = matches_base.apply(lambda row: odds_map.get((row['match_id'], row['player_1'])), axis=1)
     matches_base['odds_2'] = matches_base.apply(lambda row: odds_map.get((row['match_id'], row['player_2'])), axis=1)
-
-    # 4. Merge the historical player features
+    
     if not player_features_df.empty:
-        log_info("Merging player features...")
-        
-        matches_base['tourney_date'] = pd.to_datetime(matches_base['tourney_date'], errors='coerce').dt.strftime('%Y-%m-%d')
-        player_features_df['tourney_date'] = pd.to_datetime(player_features_df['tourney_date'], errors='coerce').dt.strftime('%Y-%m-%d')
-
         matches_base = pd.merge(
             matches_base,
             player_features_df,
             on=['tourney_date', 'player_1', 'player_2', 'surface'],
-            how='left'
+            how='left'  # Use a left join to keep all matches, even if they have no new features
         )
-        log_info("Successfully merged new player features.")
+    log_info("Successfully merged new player features.")
 
-    # 5. Now, create the two-perspective DataFrame from the clean base
+    # --- DATA TRANSFORMATION ---
+    # CRITICAL CHANGE: Only drop rows if the core odds are missing. Do NOT drop rows if the new features are missing.
     matches_base.dropna(subset=['odds_1', 'odds_2'], inplace=True)
-
+    
     persp1 = matches_base.copy()
     persp2 = matches_base.copy().rename(columns={
         'player_1': 'player_2', 'player_2': 'player_1',
@@ -59,12 +65,10 @@ def build_odds_features(df: pd.DataFrame, player_features_df: pd.DataFrame) -> p
     original_winner = features_df['winner'].copy()
     features_df['winner'] = (features_df['player_1'] == original_winner).astype(int)
 
-    # 6. Calculate final derived features in a single, efficient step
-    final_features = {
-        "implied_prob_1": 1 / pd.to_numeric(features_df["odds_1"], errors="coerce"),
-        "implied_prob_2": 1 / pd.to_numeric(features_df["odds_2"], errors="coerce")
-    }
-    features_df = features_df.assign(**final_features)
+    features_df['odds_1'] = pd.to_numeric(features_df['odds_1'], errors='coerce')
+    features_df['odds_2'] = pd.to_numeric(features_df['odds_2'], errors='coerce')
+    features_df["implied_prob_1"] = 1 / features_df["odds_1"]
+    features_df["implied_prob_2"] = 1 / features_df["odds_2"]
     features_df["implied_prob_diff"] = features_df["implied_prob_1"] - features_df["implied_prob_2"]
     features_df["odds_margin"] = features_df["implied_prob_1"] + features_df["implied_prob_2"]
     
@@ -72,19 +76,21 @@ def build_odds_features(df: pd.DataFrame, player_features_df: pd.DataFrame) -> p
     
     return enforce_schema(features_df, schema_name="features")
 
-
 def main_cli():
     import argparse
 
     parser = argparse.ArgumentParser(description="Build odds features")
     parser.add_argument("--input_csv", required=True)
+    parser.add_argument("--player_features_csv", required=True)
     parser.add_argument("--output_csv", required=True)
     args = parser.parse_args()
+    
     df = pd.read_csv(args.input_csv)
-    result = build_odds_features(df, pd.DataFrame()) 
-    if not args.dry_run:
-        result.to_csv(args.output_csv, index=False)
-        log_info(f"Features written to {args.output_csv}")
+    player_features_df = pd.read_csv(args.player_features_csv)
+    result = build_odds_features(df, player_features_df)
+    
+    result.to_csv(args.output_csv, index=False)
+    log_info(f"Features written to {args.output_csv}")
 
 if __name__ == "__main__":
     main_cli()
