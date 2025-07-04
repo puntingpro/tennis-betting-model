@@ -32,12 +32,16 @@ SCHEMAS: Dict[str, list] = {
         "player_1",
         "player_2",
         "winner",
-        "odds_1", 
+        "odds_1",
         "odds_2",
         "implied_prob_1",
         "implied_prob_2",
         "implied_prob_diff",
         "odds_margin",
+        "p1_rolling_win_pct",
+        "p2_rolling_win_pct",
+        "p1_surface_win_pct",
+        "p2_surface_win_pct",
     ],
     "value_bets": [
         "match_id",
@@ -50,16 +54,19 @@ SCHEMAS: Dict[str, list] = {
         "confidence_score",
         "winner",
     ],
+    # --- UPDATED SCHEMAS ---
     "matches_with_ids": [
         "match_id",
         "selection_id",
         "runner_name",
-        "ltp", 
+        "ltp",
         "player_1",
         "player_2",
         "winner",
         "selection_id_1",
         "selection_id_2",
+        "tourney_date",
+        "surface",  # Added
     ],
     "merged_matches": [
         "match_id",
@@ -71,7 +78,10 @@ SCHEMAS: Dict[str, list] = {
         "selection_id_1",
         "selection_id_2",
         "final_ltp",
+        "tourney_date",
+        "surface",  # Added
     ],
+    # --- END UPDATED SCHEMAS ---
     "predictions": ["match_id", "player_1", "player_2", "predicted_prob", "winner", "odds"],
     "simulations": [
         "match_id",
@@ -91,11 +101,9 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # Basic cleanup: strip, lowercase, underscores
     cleaned_cols = [col.strip().lower().replace(" ", "_") for col in df.columns]
-    df.columns = cleaned_cols  # type: ignore[assignment]
+    df.columns = cleaned_cols
 
-    # Runner -> Player mapping via regex
     runner_map = {
         col: f"player_{m.group(1)}"
         for col in df.columns
@@ -104,12 +112,10 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if runner_map:
         df = df.rename(columns=runner_map)
 
-    # Simple aliases (now works correctly on lowercase columns)
     existing_aliases = {k: v for k, v in COLUMN_ALIASES.items() if k in df.columns}
     if existing_aliases:
         df = df.rename(columns=existing_aliases)
 
-    # Reorder: player_1, player_2, ... then the rest
     player_cols = sorted(
         [c for c in df.columns if c.startswith("player_")],
         key=lambda x: int(x.split("_")[1]),
@@ -128,17 +134,14 @@ def enforce_schema(df: pd.DataFrame, schema_name: str) -> pd.DataFrame:
     if schema_name not in SCHEMAS:
         raise ValueError(f"Unknown schema: {schema_name}")
 
-    # Ensure DataFrame columns are normalized before enforcement
     df = normalize_columns(df)
 
     schema_cols = SCHEMAS[schema_name]
     
-    # Add missing schema columns to the DataFrame
     for col in schema_cols:
         if col not in df.columns:
             df[col] = pd.NA
 
-    # Return df with columns in the specified schema order
     final_cols = [col for col in schema_cols if col in df.columns]
     return df[final_cols]
 
@@ -149,7 +152,6 @@ def patch_winner_column(df: pd.DataFrame, winner_col: str = "winner") -> pd.Data
     """
     df = df.copy()
     if winner_col in df.columns:
-        # Ensure winner is numeric before filling NA, then convert to integer
         df[winner_col] = (
             pd.to_numeric(df[winner_col], errors="coerce").fillna(0).astype(int)
         )

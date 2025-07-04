@@ -3,6 +3,7 @@ Defines the structure and components of the data processing pipeline.
 """
 
 from scripts.builders.core import build_matches_from_snapshots
+from scripts.builders.build_player_features import build_player_features  # Import the new function
 from scripts.pipeline.build_odds_features import build_odds_features
 from scripts.pipeline.detect_value_bets import detect_value_bets
 from scripts.pipeline.match_selection_ids import assign_selection_ids
@@ -23,6 +24,11 @@ STAGE_FUNCS = {
         "input_keys": ["matches_csv", "sackmann_csv", "snapshots_csv"],
         "output_key": "matches_with_ids_csv",
     },
+    "player_features": {  # New stage
+        "fn": build_player_features,
+        "input_keys": ["sackmann_csv"],
+        "output_key": "player_features_csv",
+    },
     "merge": {
         "fn": merge_final_ltps,
         "input_keys": ["matches_with_ids_csv", "snapshots_csv"],
@@ -30,7 +36,7 @@ STAGE_FUNCS = {
     },
     "features": {
         "fn": build_odds_features,
-        "input_keys": ["merged_matches_csv"],
+        "input_keys": ["merged_matches_csv", "player_features_csv"],  # Add new input
         "output_key": "features_csv",
     },
     "predict": {

@@ -1,3 +1,5 @@
+# src/scripts/pipeline/run_full_pipeline.py
+
 import traceback
 from pathlib import Path
 import concurrent.futures
@@ -31,7 +33,6 @@ def resolve_stage_paths(label_cfg, working_dir):
     all_output_keys = {stage["output_key"] for stage in STAGE_FUNCS.values()}
     all_keys = list(all_input_keys.union(all_output_keys))
 
-    # Add model_file to the list of keys to resolve
     all_keys.append("model_file")
 
     for key in all_keys:
@@ -96,11 +97,15 @@ def run_pipeline_for_label(
 
             log_info(f"Running {stage} with inputs: {input_paths}")
 
-            # Execute stage
             result = None
             if dry_run:
                 log_info(f"[DRY-RUN] Would write to {output_path}")
-            # --- Special Handlers for Stages with Parameters ---
+            # --- UPDATED SECTION: ADDED HANDLER FOR 'features' STAGE ---
+            elif stage == "features":
+                df_merged = pd.read_csv(input_paths["merged_matches_csv"])
+                df_player_features = pd.read_csv(input_paths["player_features_csv"])
+                result = fn(df_merged, df_player_features)
+            # --- END UPDATED SECTION ---
             elif stage == "detect":
                 df_pred = pd.read_csv(input_paths["predictions_csv"])
                 params = {
@@ -122,20 +127,16 @@ def run_pipeline_for_label(
                     "flat_stake_unit": label_cfg.get("flat_stake_unit", 10.0),
                 }
                 result = fn(df_bets, **params)
-            # --- Generic Handler for Other Stages ---
             else:
                 func_args = []
                 for key in input_keys:
-                    # Handle the model file by loading it with joblib
                     if key == "model_file":
                         model_path = input_paths.get(key)
                         if not model_path or not Path(model_path).exists():
                            raise FileNotFoundError(f"Model file not found at path: {model_path}")
                         func_args.append(joblib.load(model_path))
-                    # Handle CSV files by reading them with pandas
                     elif input_paths.get(key):
                         func_args.append(pd.read_csv(input_paths[key]))
-
                 result = fn(*func_args)
 
             if result is not None and output_path:
@@ -164,7 +165,7 @@ def run_pipeline_for_label(
 def main(config, only, batch, dry_run, overwrite, verbose, json_logs, working_dir):
     """Main orchestrator for running the pipeline."""
     app_cfg = load_config(config)
-    stages = app_cfg.get("stages", ["build", "ids", "merge", "features", "predict", "detect", "simulate"])
+    stages = app_cfg.get("stages", ["build", "ids", "player_features", "merge", "features", "predict", "detect", "simulate"])
     working_dir = Path(working_dir)
     working_dir.mkdir(parents=True, exist_ok=True)
 
@@ -172,10 +173,8 @@ def main(config, only, batch, dry_run, overwrite, verbose, json_logs, working_di
     tournaments = app_cfg.get("tournaments", [])
 
     if batch:
-        # For batch mode, merge defaults into each tournament's config
         labels_to_run = [{**defaults, **label_cfg} for label_cfg in tournaments]
     else:
-        # For single run mode, merge defaults into the main pipeline config
         single_run_cfg = {**defaults, **app_cfg.get("pipeline", {})}
         labels_to_run = [single_run_cfg]
 
@@ -185,9 +184,7 @@ def main(config, only, batch, dry_run, overwrite, verbose, json_logs, working_di
     if only:
         log_warning(f"Running only a subset of stages: {only}")
 
-    # Use a ProcessPoolExecutor to run pipelines in parallel
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        # Create a future for each tournament label
         futures = {
             executor.submit(
                 run_pipeline_for_label,
@@ -202,7 +199,6 @@ def main(config, only, batch, dry_run, overwrite, verbose, json_logs, working_di
             ): label_cfg.get("label", "Unknown") for label_cfg in labels_to_run
         }
 
-        # Process results as they complete
         for future in concurrent.futures.as_completed(futures):
             label = futures[future]
             try:
