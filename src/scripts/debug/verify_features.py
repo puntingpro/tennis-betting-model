@@ -27,7 +27,8 @@ def verify_feature_columns():
     all_files_ok = True
     columns_to_check = [
         'p1_rolling_win_pct', 'p2_rolling_win_pct',
-        'p1_surface_win_pct', 'p2_surface_win_pct'
+        'p1_surface_win_pct', 'p2_surface_win_pct',
+        'p1_h2h_wins', 'p2_h2h_wins'
     ]
 
     for file_path in sorted(feature_files):

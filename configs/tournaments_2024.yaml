@@ -1,5 +1,6 @@
 defaults:
   model_file: models/xgb_model.joblib
+  alias_csv: configs/player_aliases.csv # Add this line
 
 tournaments:
   - label: ausopen_2024_atp
@@ -10,11 +11,9 @@ tournaments:
     end_date: "2024-01-28"
     snapshots_csv: parsed/betfair_ausopen_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: grand_slam
-    # Example of specifying a flat staking strategy for this tournament run
     staking_strategy: "flat"
     flat_stake_unit: 15.0
 
@@ -26,11 +25,9 @@ tournaments:
     end_date: "2024-01-28"
     snapshots_csv: parsed/betfair_ausopen_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: grand_slam
-    # This tournament will use the default 'kelly' strategy since it's not specified
 
   - label: frenchopen_2024_atp
     tour: atp
@@ -40,7 +37,6 @@ tournaments:
     end_date: "2024-06-09"
     snapshots_csv: parsed/betfair_frenchopen_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: clay
     tier: grand_slam
@@ -53,7 +49,6 @@ tournaments:
     end_date: "2024-06-09"
     snapshots_csv: parsed/betfair_frenchopen_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: clay
     tier: grand_slam
@@ -66,7 +61,6 @@ tournaments:
     end_date: "2024-07-14"
     snapshots_csv: parsed/betfair_wimbledon_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: grass
     tier: grand_slam
@@ -79,7 +73,6 @@ tournaments:
     end_date: "2024-07-14"
     snapshots_csv: parsed/betfair_wimbledon_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.2
     surface: grass
     tier: grand_slam
@@ -92,7 +85,6 @@ tournaments:
     end_date: "2024-09-08"
     snapshots_csv: parsed/betfair_usopen_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: grand_slam
@@ -105,7 +97,6 @@ tournaments:
     end_date: "2024-09-08"
     snapshots_csv: parsed/betfair_usopen_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.2
     surface: hard
     tier: grand_slam
@@ -118,7 +109,6 @@ tournaments:
     end_date: "2024-03-17"
     snapshots_csv: parsed/betfair_indianwells_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: masters
@@ -131,7 +121,6 @@ tournaments:
     end_date: "2024-03-17"
     snapshots_csv: parsed/betfair_indianwells_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: masters
@@ -144,7 +133,6 @@ tournaments:
     end_date: "2024-03-31"
     snapshots_csv: parsed/betfair_miami_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: masters
@@ -157,7 +145,6 @@ tournaments:
     end_date: "2024-03-31"
     snapshots_csv: parsed/betfair_miami_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: hard
     tier: masters
@@ -170,7 +157,6 @@ tournaments:
     end_date: "2024-05-05"
     snapshots_csv: parsed/betfair_madrid_2024_atp_snapshots.csv
     sackmann_csv: data/tennis_atp/atp_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: clay
     tier: masters
@@ -183,7 +169,6 @@ tournaments:
     end_date: "2024-05-05"
     snapshots_csv: parsed/betfair_madrid_2024_wta_snapshots.csv
     sackmann_csv: data/tennis_wta/wta_matches_2024.csv
-    alias_csv: configs/player_aliases.csv
     ev_threshold: 0.3
     surface: clay
     tier: masters

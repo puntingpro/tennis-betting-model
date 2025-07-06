@@ -42,6 +42,8 @@ SCHEMAS: Dict[str, list] = {
         "p2_rolling_win_pct",
         "p1_surface_win_pct",
         "p2_surface_win_pct",
+        "p1_h2h_wins",
+        "p2_h2h_wins",
     ],
     "value_bets": [
         "match_id",

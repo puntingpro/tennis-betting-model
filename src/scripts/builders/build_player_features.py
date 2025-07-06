@@ -2,7 +2,8 @@
 
 import pandas as pd
 from rapidfuzz import process
-from scripts.utils.logger import log_info, log_success
+from collections import defaultdict
+from scripts.utils.logger import log_info, log_success, log_warning
 from scripts.utils.schema import normalize_columns
 
 def find_fuzzy_match(name: str, choices: list[str], score_cutoff: int = 90) -> str | None:
@@ -12,80 +13,86 @@ def find_fuzzy_match(name: str, choices: list[str], score_cutoff: int = 90) -> s
     match = process.extractOne(name, choices, score_cutoff=score_cutoff)
     return match[0] if match else None
 
-def calculate_surface_win_pct(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculates historical surface win percentage for each player in a memory-efficient way."""
-    log_info("Calculating surface-specific win percentages...")
+def calculate_historical_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates rolling win pct, surface win pct, and H2H stats in a single,
+    memory-efficient pass, ensuring data alignment.
+    """
+    log_info("Calculating all historical stats in a unified, memory-efficient pass...")
     
-    id_vars = ['tourney_date', 'surface', 'match_num']
-    melted = df.melt(id_vars=id_vars, value_vars=['winner_name', 'loser_name'], 
-                     var_name='result', value_name='player_name')
-    melted['win'] = (melted['result'] == 'winner_name').astype(int)
-    melted = melted.sort_values(by=['player_name', 'tourney_date'])
+    # Sort by date to process matches chronologically and preserve original index
+    df = df.sort_values(by='tourney_date').reset_index(drop=True)
 
-    melted['surface_wins'] = melted.groupby(['player_name', 'surface'])['win'].cumsum()
-    melted['surface_matches'] = melted.groupby(['player_name', 'surface']).cumcount() + 1
+    # Data structures to hold player histories
+    player_matches = defaultdict(list)
+    h2h_records = defaultdict(lambda: defaultdict(int))
     
-    melted['prev_surface_wins'] = melted.groupby(['player_name', 'surface'])['surface_wins'].shift(1).fillna(0)
-    melted['prev_surface_matches'] = melted.groupby(['player_name', 'surface'])['surface_matches'].shift(1).fillna(0)
+    # List to store the results for each row
+    results = []
+
+    for index, row in df.iterrows():
+        p1 = row['winner_name']
+        p2 = row['loser_name']
+        surface = row['surface']
+        current_date = row['tourney_date']
+        date_year_ago = current_date - pd.Timedelta(days=365)
+        
+        # --- Get H2H Stats (before this match) ---
+        matchup_key = tuple(sorted((p1, p2)))
+        p1_h2h_wins = h2h_records[matchup_key].get(p1, 0)
+        p2_h2h_wins = h2h_records[matchup_key].get(p2, 0)
+
+        # --- Get Historical Stats for P1 (winner) ---
+        p1_history = [m for m in player_matches[p1] if m['date'] < current_date]
+        p1_rolling_history = [m for m in p1_history if m['date'] >= date_year_ago]
+        p1_surface_history = [m for m in p1_history if m['surface'] == surface]
+        
+        p1_rolling_win_pct = sum(m['win'] for m in p1_rolling_history) / len(p1_rolling_history) if p1_rolling_history else 0
+        p1_surface_win_pct = sum(m['win'] for m in p1_surface_history) / len(p1_surface_history) if p1_surface_history else 0
+
+        # --- Get Historical Stats for P2 (loser) ---
+        p2_history = [m for m in player_matches[p2] if m['date'] < current_date]
+        p2_rolling_history = [m for m in p2_history if m['date'] >= date_year_ago]
+        p2_surface_history = [m for m in p2_history if m['surface'] == surface]
+
+        p2_rolling_win_pct = sum(m['win'] for m in p2_rolling_history) / len(p2_rolling_history) if p2_rolling_history else 0
+        p2_surface_win_pct = sum(m['win'] for m in p2_surface_history) / len(p2_surface_history) if p2_surface_history else 0
+
+        # Append results for this match
+        results.append({
+            'p1_rolling_win_pct': p1_rolling_win_pct,
+            'p2_rolling_win_pct': p2_rolling_win_pct,
+            'p1_surface_win_pct': p1_surface_win_pct,
+            'p2_surface_win_pct': p2_surface_win_pct,
+            'p1_h2h_wins': p1_h2h_wins,
+            'p2_h2h_wins': p2_h2h_wins,
+        })
+
+        # --- Update histories for future matches ---
+        h2h_records[matchup_key][p1] += 1
+        player_matches[p1].append({'date': current_date, 'win': 1, 'surface': surface})
+        player_matches[p2].append({'date': current_date, 'win': 0, 'surface': surface})
+
+    # Create a DataFrame from the results and concatenate it with the original
+    stats_df = pd.DataFrame(results)
+    df = pd.concat([df, stats_df], axis=1)
     
-    melted['surface_win_pct'] = (melted['prev_surface_wins'] / melted['prev_surface_matches']).fillna(0)
-
-    df = df.merge(
-        melted[melted['result'] == 'winner_name'][['tourney_date', 'match_num', 'player_name', 'surface_win_pct']],
-        left_on=['tourney_date', 'match_num', 'winner_name'],
-        right_on=['tourney_date', 'match_num', 'player_name'],
-        how='left'
-    ).rename(columns={'surface_win_pct': 'p1_surface_win_pct'}).drop(columns='player_name')
-
-    df = df.merge(
-        melted[melted['result'] == 'loser_name'][['tourney_date', 'match_num', 'player_name', 'surface_win_pct']],
-        left_on=['tourney_date', 'match_num', 'loser_name'],
-        right_on=['tourney_date', 'match_num', 'player_name'],
-        how='left'
-    ).rename(columns={'surface_win_pct': 'p2_surface_win_pct'}).drop(columns='player_name')
-
     return df
 
-def calculate_rolling_win_pct(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculates a 52-week rolling win percentage for each player in a memory-efficient way."""
-    log_info("Calculating 52-week rolling win percentages...")
-    
-    id_vars = ['tourney_date', 'match_num']
-    melted = df.melt(id_vars=id_vars, value_vars=['winner_name', 'loser_name'], 
-                     var_name='result', value_name='player_name')
-    melted['win'] = (melted['result'] == 'winner_name').astype(int)
-    melted = melted.set_index('tourney_date').sort_index()
-
-    rolling_stats = melted.groupby('player_name')['win'].rolling(window='365D', closed='left').agg(['sum', 'count'])
-    rolling_stats.columns = ['rolling_wins', 'rolling_matches']
-    rolling_stats = rolling_stats.reset_index()
-    
-    rolling_stats['rolling_win_pct'] = (rolling_stats['rolling_wins'] / rolling_stats['rolling_matches']).fillna(0)
-
-    melted = melted.reset_index().merge(rolling_stats, on=['player_name', 'tourney_date'], how='left')
-    
-    df = df.merge(
-        melted[melted['result'] == 'winner_name'][['tourney_date', 'match_num', 'player_name', 'rolling_win_pct']],
-        left_on=['tourney_date', 'match_num', 'winner_name'],
-        right_on=['tourney_date', 'match_num', 'player_name'],
-        how='left'
-    ).rename(columns={'rolling_win_pct': 'p1_rolling_win_pct'}).drop(columns='player_name')
-
-    df = df.merge(
-        melted[melted['result'] == 'loser_name'][['tourney_date', 'match_num', 'player_name', 'rolling_win_pct']],
-        left_on=['tourney_date', 'match_num', 'loser_name'],
-        right_on=['tourney_date', 'match_num', 'player_name'],
-        how='left'
-    ).rename(columns={'rolling_win_pct': 'p2_rolling_win_pct'}).drop(columns='player_name')
-
-    return df
 
 def build_player_features(sackmann_df: pd.DataFrame, snapshots_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Main function to build player-centric features from historical data,
-    using canonical player names from snapshots for matching.
+    Main function to build player-centric features from historical data.
     """
     log_info("Building player features with canonical name matching...")
+    
+    # --- Memory Optimization ---
+    for col in ['winner_name', 'loser_name', 'surface']:
+        if col in sackmann_df.columns:
+            sackmann_df[col] = sackmann_df[col].astype('category')
+    if 'runner_name' in snapshots_df.columns:
+        snapshots_df['runner_name'] = snapshots_df['runner_name'].astype('category')
+    
     sackmann_df = normalize_columns(sackmann_df.copy())
     snapshots_df = normalize_columns(snapshots_df.copy())
 
@@ -103,20 +110,17 @@ def build_player_features(sackmann_df: pd.DataFrame, snapshots_df: pd.DataFrame)
     original_rows = len(sackmann_df)
     sackmann_df.dropna(subset=['winner_name_clean', 'loser_name_clean'], inplace=True)
     if original_rows > len(sackmann_df):
-        log_info(f"Dropped {original_rows - len(sackmann_df)} rows due to missing name matches.")
+        log_warning(f"Dropped {original_rows - len(sackmann_df)} rows due to missing name matches.")
 
     sackmann_df.drop(columns=['winner_name', 'loser_name'], inplace=True)
     sackmann_df.rename(columns={'winner_name_clean': 'winner_name', 'loser_name_clean': 'loser_name'}, inplace=True)
 
-    # CRITICAL FIX: Convert date from YYYYMMDD format to datetime objects for calculations
     sackmann_df['tourney_date'] = pd.to_datetime(sackmann_df['tourney_date'], format='%Y%m%d')
 
-    features_df = calculate_rolling_win_pct(sackmann_df)
-    features_df = calculate_surface_win_pct(features_df)
+    features_df = calculate_historical_stats(sackmann_df)
     
-    log_success("Successfully built player features.")
+    log_success("Successfully built all player features.")
     
-    # Convert date to string for the final CSV output
     features_df['tourney_date'] = features_df['tourney_date'].dt.strftime('%Y-%m-%d')
     
     features_df = features_df.rename(columns={
@@ -133,13 +137,24 @@ def build_player_features(sackmann_df: pd.DataFrame, snapshots_df: pd.DataFrame)
         'p2_rolling_win_pct',
         'p1_surface_win_pct',
         'p2_surface_win_pct',
+        'p1_h2h_wins',
+        'p2_h2h_wins',
     ]
     
+    # This loop now correctly fills NaNs only for numeric columns.
     for col in final_cols:
         if col not in features_df.columns:
-            features_df[col] = 0
+            if col in ['player_1', 'player_2', 'surface']:
+                features_df[col] = None
+                features_df[col] = features_df[col].astype('category')
+            else:
+                features_df[col] = 0.0
+        else:
+            if features_df[col].dtype.name != 'category':
+                features_df[col] = features_df[col].fillna(0)
     
-    return features_df[final_cols].fillna(0)
+    return features_df[final_cols]
+
 
 def main_cli():
     import argparse
@@ -149,7 +164,7 @@ def main_cli():
     parser.add_argument("--output_csv", required=True)
     args = parser.parse_args()
     
-    df_sackmann = pd.read_csv(args.sackmann_csv)
+    df_sackmann = pd.read_csv(args.sackmann_csv, low_memory=False)
     df_snapshots = pd.read_csv(args.snapshots_csv)
     features = build_player_features(df_sackmann, df_snapshots)
     features.to_csv(args.output_csv, index=False)

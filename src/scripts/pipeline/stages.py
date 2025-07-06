@@ -23,12 +23,12 @@ STAGE_FUNCS = {
     },
     "ids": {
         "fn": assign_selection_ids,
-        "input_keys": ["matches_csv", "sackmann_csv", "snapshots_csv"],
+        "input_keys": ["matches_csv", "sackmann_csv", "snapshots_csv", "alias_csv"],
         "output_key": "matches_with_ids_csv",
     },
     "player_features": {
         "fn": build_player_features,
-        "input_keys": ["sackmann_csv", "snapshots_csv"],  # MODIFIED: Added snapshots_csv
+        "input_keys": ["sackmann_csv", "snapshots_csv"], 
         "output_key": "player_features_csv",
     },
     "merge": {

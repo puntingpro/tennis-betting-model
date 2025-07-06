@@ -19,11 +19,13 @@ def build_odds_features(df: pd.DataFrame, player_features_df: pd.DataFrame) -> p
     
     key_cols = ['tourney_date', 'player_1', 'player_2', 'surface']
     
+    # Standardize date formats to strings for consistent merging
     df['tourney_date'] = pd.to_datetime(df['tourney_date'], errors='coerce').dt.strftime('%Y-%m-%d')
     player_features_df['tourney_date'] = pd.to_datetime(player_features_df['tourney_date'], errors='coerce').dt.strftime('%Y-%m-%d')
     
     df.dropna(subset=['match_id', 'player_1', 'player_2'], inplace=True)
     
+    # Ensure all key columns are of string type for both dataframes
     for col in key_cols:
         if col in df.columns:
             df[col] = df[col].astype(str)
@@ -44,12 +46,11 @@ def build_odds_features(df: pd.DataFrame, player_features_df: pd.DataFrame) -> p
             matches_base,
             player_features_df,
             on=['tourney_date', 'player_1', 'player_2', 'surface'],
-            how='left'  # Use a left join to keep all matches, even if they have no new features
+            how='left'
         )
     log_info("Successfully merged new player features.")
 
     # --- DATA TRANSFORMATION ---
-    # CRITICAL CHANGE: Only drop rows if the core odds are missing. Do NOT drop rows if the new features are missing.
     matches_base.dropna(subset=['odds_1', 'odds_2'], inplace=True)
     
     persp1 = matches_base.copy()
@@ -58,6 +59,7 @@ def build_odds_features(df: pd.DataFrame, player_features_df: pd.DataFrame) -> p
         'odds_1': 'odds_2', 'odds_2': 'odds_1',
         'p1_rolling_win_pct': 'p2_rolling_win_pct', 'p2_rolling_win_pct': 'p1_rolling_win_pct',
         'p1_surface_win_pct': 'p2_surface_win_pct', 'p2_surface_win_pct': 'p1_surface_win_pct',
+        'p1_h2h_wins': 'p2_h2h_wins', 'p2_h2h_wins': 'p1_h2h_wins',
     })
 
     features_df = pd.concat([persp1, persp2], ignore_index=True, sort=False)
