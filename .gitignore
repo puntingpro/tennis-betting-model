@@ -23,6 +23,7 @@ rf_model.json
 # ─── Logs and other generated files ─────────────────────────────────────────────
 *.log
 *.txt
+config.yaml # Exclude configuration file
 
 # ─── OS‐specific and IDE settings ───────────────────────────────────────────────
 .DS_Store

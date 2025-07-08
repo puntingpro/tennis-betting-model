@@ -1,124 +1,134 @@
 # src/scripts/builders/build_player_features.py
 
-import argparse
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from collections import defaultdict, deque
 
-def get_most_recent_ranking(df_rankings, player_id, date):
-    player_rankings = df_rankings[df_rankings['player'] == player_id]
-    last_ranking_idx = player_rankings['ranking_date'].searchsorted(date, side='right') - 1
-    if last_ranking_idx >= 0:
-        return player_rankings.iloc[last_ranking_idx]['rank']
-    return np.nan
+# --- Add project root to the Python path ---
+project_root = Path(__file__).resolve().parents[3]
+sys.path.append(str(project_root))
 
-def build_advanced_player_features(df_matches, df_rankings, df_players):
+from src.scripts.utils.config import load_config
+from src.scripts.utils.file_utils import load_dataframes
+from src.scripts.utils.logger import setup_logging, log_info, log_success
+
+def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
     """
-    Builds an advanced historical feature set for each player, now including
-    recent form (rolling win percentage).
+    Calculates expanding and rolling stats for each player in a vectorized manner.
     """
-    player_info = df_players.set_index('player_id').to_dict('index')
-    df_matches = df_matches.sort_values(by='tourney_date').reset_index(drop=True)
-    df_rankings = df_rankings.sort_values(by='ranking_date').reset_index(drop=True)
+    id_vars = ['match_id', 'tourney_date', 'surface']
+    p1_cols = ['winner_id', 'loser_id']
+    p2_cols = ['loser_id', 'winner_id']
 
-    # --- MODIFIED: More complex stats storage, including recent form ---
-    player_stats = defaultdict(lambda: {
-        'wins': 0, 'matches': 0,
-        'surface_wins': defaultdict(int),
-        'surface_matches': defaultdict(int),
-        'last_10_results': deque(maxlen=10) # Use a deque for efficient rolling window
-    })
-    h2h_stats = {}
+    df_p1 = df_matches[id_vars + p1_cols].rename(columns={'winner_id': 'player_id', 'loser_id': 'opponent_id'})
+    df_p1['won'] = 1
     
-    features_list = []
+    df_p2 = df_matches[id_vars + p2_cols].rename(columns={'loser_id': 'player_id', 'winner_id': 'opponent_id'})
+    df_p2['won'] = 0
 
-    for row in tqdm(df_matches.itertuples(), total=len(df_matches), desc="Building Form-Aware Features"):
-        winner_id, loser_id = int(row.winner_id), int(row.loser_id)
-        match_date = row.tourney_date
-        surface = row.surface if pd.notna(row.surface) else 'Unknown'
-        tourney_name = row.tourney_name
+    df_player_matches = pd.concat([df_p1, df_p2], ignore_index=True)
+    df_player_matches = df_player_matches.sort_values(by='tourney_date')
 
-        winner_info = player_info.get(winner_id, {})
-        loser_info = player_info.get(loser_id, {})
-
-        winner_rank = get_most_recent_ranking(df_rankings, winner_id, match_date)
-        loser_rank = get_most_recent_ranking(df_rankings, loser_id, match_date)
-
-        winner_hist = player_stats[winner_id]
-        loser_hist = player_stats[loser_id]
-        
-        h2h_key = tuple(sorted((winner_id, loser_id)))
-        h2h_hist = h2h_stats.get(h2h_key, {'p1_wins': 0, 'p2_wins': 0, 'total': 0})
-
-        # --- Create Matchup Row with Form Features ---
-        p1_id, p2_id = (winner_id, loser_id)
-
-        # Get stats *before* the current match
-        p1_form = sum(winner_hist['last_10_results']) / len(winner_hist['last_10_results']) if winner_hist['last_10_results'] else 0
-        p2_form = sum(loser_hist['last_10_results']) / len(loser_hist['last_10_results']) if loser_hist['last_10_results'] else 0
-
-        features_list.append({
-            'match_id': row.match_id, 'tourney_date': match_date, 'tourney_name': tourney_name,
-            'p1_id': p1_id, 'p2_id': p2_id, 'winner': 1,
-            'p1_rank': winner_rank, 'p2_rank': loser_rank,
-            'rank_diff': winner_rank - loser_rank if pd.notna(winner_rank) and pd.notna(loser_rank) else 0,
-            'p1_height': winner_info.get('height', np.nan), 'p2_height': loser_info.get('height', np.nan),
-            'p1_hand': winner_info.get('hand', 'U'), 'p2_hand': loser_info.get('hand', 'U'),
-            'h2h_p1_wins': h2h_hist['p1_wins'] if p1_id == h2h_key[0] else h2h_hist['p2_wins'],
-            'h2h_p2_wins': h2h_hist['p2_wins'] if p1_id == h2h_key[0] else h2h_hist['p1_wins'],
-            'p1_win_perc': winner_hist['wins'] / winner_hist['matches'] if winner_hist['matches'] > 0 else 0,
-            'p2_win_perc': loser_hist['wins'] / loser_hist['matches'] if loser_hist['matches'] > 0 else 0,
-            'p1_surface_win_perc': winner_hist['surface_wins'][surface] / winner_hist['surface_matches'][surface] if winner_hist['surface_matches'][surface] > 0 else 0,
-            'p2_surface_win_perc': loser_hist['surface_wins'][surface] / loser_hist['surface_matches'][surface] if loser_hist['surface_matches'][surface] > 0 else 0,
-            # --- NEW: Recent Form Features ---
-            'p1_form_last_10': p1_form,
-            'p2_form_last_10': p2_form,
-        })
-        
-        # --- Update stats for the next match ---
-        winner_hist['wins'] += 1
-        winner_hist['matches'] += 1
-        winner_hist['surface_wins'][surface] += 1
-        winner_hist['surface_matches'][surface] += 1
-        winner_hist['last_10_results'].append(1) # 1 for a win
-        
-        loser_hist['matches'] += 1
-        loser_hist['surface_matches'][surface] += 1
-        loser_hist['last_10_results'].append(0) # 0 for a loss
-
-        h2h_hist['total'] += 1
-        if winner_id == h2h_key[0]: h2h_hist['p1_wins'] += 1
-        else: h2h_hist['p2_wins'] += 1
-        h2h_stats[h2h_key] = h2h_hist
-
-    return pd.DataFrame(features_list)
-
-def main():
-    parser = argparse.ArgumentParser(description="Build advanced historical player features with form and surface data.")
-    parser.add_argument("--matches_csv", required=True)
-    parser.add_argument("--rankings_csv", required=True)
-    parser.add_argument("--players_csv", required=True)
-    parser.add_argument("--output_csv", required=True)
-    args = parser.parse_args()
-
-    print("Loading data...")
-    df_matches = pd.read_csv(args.matches_csv, low_memory=False)
-    df_rankings = pd.read_csv(args.rankings_csv)
-    df_players = pd.read_csv(args.players_csv, encoding='latin-1')
+    gb_player = df_player_matches.groupby('player_id')
+    df_player_matches['matches_played'] = gb_player.cumcount()
+    df_player_matches['wins'] = gb_player['won'].cumsum() - df_player_matches['won']
     
-    df_matches['tourney_date'] = pd.to_datetime(df_matches['tourney_date'])
-    df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'])
-    df_matches['match_id'] = df_matches['tourney_id'] + '-' + df_matches['match_num'].astype(str)
+    gb_surface = df_player_matches.groupby(['player_id', 'surface'])
+    df_player_matches['surface_matches'] = gb_surface.cumcount()
+    df_player_matches['surface_wins'] = gb_surface['won'].cumsum() - df_player_matches['won']
 
-    features_df = build_advanced_player_features(df_matches, df_rankings, df_players)
+    df_player_matches['form_last_10'] = gb_player['won'].shift(1).rolling(window=10, min_periods=1).mean().fillna(0)
+    df_player_matches['win_perc'] = (df_player_matches['wins'] / df_player_matches['matches_played']).fillna(0)
+    df_player_matches['surface_win_perc'] = (df_player_matches['surface_wins'] / df_player_matches['surface_matches']).fillna(0)
+
+    stats_cols = ['match_id', 'player_id', 'win_perc', 'surface_win_perc', 'form_last_10']
+    return df_player_matches[stats_cols]
+
+def main(args):
+    """
+    Main function to build features, driven by the config file passed in args.
+    """
+    setup_logging()
+    config = load_config(args.config)
+    paths = config['data_paths']
+
+    log_info("Loading and consolidating raw data...")
+    df_matches = load_dataframes(paths['raw_matches_glob'])
+    df_rankings = load_dataframes(paths['raw_rankings_glob'])
+    df_players = pd.read_csv(paths['raw_players'], encoding='latin-1')
     
-    Path(args.output_csv).parent.mkdir(parents=True, exist_ok=True)
-    print(f"Saving features to {args.output_csv}...")
-    features_df.to_csv(args.output_csv, index=False)
+    log_info("Preprocessing data...")
+    df_matches['tourney_date'] = pd.to_datetime(df_matches['tourney_date'], format='%Y%m%d', errors='coerce')
+    df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'], format='%Y%m%d', errors='coerce')
+    df_matches.dropna(subset=['tourney_date', 'winner_id', 'loser_id'], inplace=True)
     
-    print(f"✅ Successfully created form-aware feature library at {args.output_csv}")
+    # --- FIX: Ensure consistent data types ---
+    df_matches['winner_id'] = df_matches['winner_id'].astype('int64')
+    df_matches['loser_id'] = df_matches['loser_id'].astype('int64')
+    df_rankings['player'] = df_rankings['player'].astype('int64')
+    # --- END FIX ---
+    
+    df_matches['match_id'] = df_matches['tourney_id'].astype(str) + '-' + df_matches['match_num'].astype(str)
+    df_matches = df_matches.sort_values(by='tourney_date')
+
+    log_info("Calculating player stats (vectorized)...")
+    player_stats_df = calculate_player_stats(df_matches)
+
+    log_info("Merging stats and building final feature set...")
+    features_df = df_matches[['match_id', 'tourney_date', 'tourney_name', 'surface', 'winner_id', 'loser_id']].copy()
+    features_df = features_df.rename(columns={'winner_id': 'p1_id', 'loser_id': 'p2_id'})
+    features_df['winner'] = 1
+
+    features_df = pd.merge(features_df, player_stats_df, left_on=['match_id', 'p1_id'], right_on=['match_id', 'player_id'], how='left').rename(columns={'win_perc': 'p1_win_perc', 'surface_win_perc': 'p1_surface_win_perc', 'form_last_10': 'p1_form_last_10'}).drop('player_id', axis=1)
+    features_df = pd.merge(features_df, player_stats_df, left_on=['match_id', 'p2_id'], right_on=['match_id', 'player_id'], how='left').rename(columns={'win_perc': 'p2_win_perc', 'surface_win_perc': 'p2_surface_win_perc', 'form_last_10': 'p2_form_last_10'}).drop('player_id', axis=1)
+
+    player_info = df_players[['player_id', 'hand', 'height']].set_index('player_id')
+    features_df = features_df.merge(player_info, left_on='p1_id', right_index=True, how='left').rename(columns={'hand': 'p1_hand', 'height': 'p1_height'})
+    features_df = features_df.merge(player_info, left_on='p2_id', right_index=True, how='left').rename(columns={'hand': 'p2_hand', 'height': 'p2_height'})
+
+    log_info("Fetching player rankings (vectorized)...")
+    df_rankings_sorted = df_rankings.sort_values(by='ranking_date')
+    features_df_sorted = features_df.sort_values(by='tourney_date')
+
+    p1_ranks = pd.merge_asof(
+        left=features_df_sorted[['match_id', 'tourney_date', 'p1_id']],
+        right=df_rankings_sorted[['ranking_date', 'player', 'rank']],
+        left_on='tourney_date',
+        right_on='ranking_date',
+        left_by='p1_id',
+        right_by='player',
+        direction='backward'
+    ).rename(columns={'rank': 'p1_rank'})[['match_id', 'p1_rank']]
+
+    p2_ranks = pd.merge_asof(
+        left=features_df_sorted[['match_id', 'tourney_date', 'p2_id']],
+        right=df_rankings_sorted[['ranking_date', 'player', 'rank']],
+        left_on='tourney_date',
+        right_on='ranking_date',
+        left_by='p2_id',
+        right_by='player',
+        direction='backward'
+    ).rename(columns={'rank': 'p2_rank'})[['match_id', 'p2_rank']]
+
+    features_df = pd.merge(features_df, p1_ranks, on='match_id', how='left')
+    features_df = pd.merge(features_df, p2_ranks, on='match_id', how='left')
+    features_df['rank_diff'] = features_df['p1_rank'] - features_df['p2_rank']
+    
+    features_df['h2h_p1_wins'] = 0
+    features_df['h2h_p2_wins'] = 0
+
+    output_path = Path(paths['consolidated_features'])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    log_info(f"Saving features to {output_path}...")
+    features_df.to_csv(output_path, index=False)
+    
+    log_success(f"✅ Successfully created feature library at {output_path}")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.yaml", help="Path to config file.")
+    args = parser.parse_args()
+    main(args)

@@ -14,30 +14,28 @@ project_root = Path(__file__).resolve().parents[3]
 sys.path.append(str(project_root))
 
 from src.scripts.utils.betting_math import add_ev_and_kelly
-from src.scripts.utils.constants import DEFAULT_EV_THRESHOLD
+from src.scripts.utils.common import get_most_recent_ranking
 from src.scripts.utils.logger import setup_logging, log_info
+from src.scripts.utils.config import load_config
+from src.scripts.utils.api import login_to_betfair, get_tennis_competitions, get_live_match_odds
 
-def get_most_recent_ranking(df_rankings, player_id, date):
-    player_rankings = df_rankings[df_rankings['player'] == player_id]
-    last_ranking_idx = player_rankings['ranking_date'].searchsorted(date, side='right') - 1
-    if last_ranking_idx >= 0:
-        return player_rankings.iloc[last_ranking_idx]['rank']
-    return np.nan
-
-def run_selective_value_pipeline():
+def main(args):
     """
-    Final pipeline: Uses the best model to find value bets in high-ROI tournaments.
+    Main pipeline function: Uses the best model to find value bets in high-ROI tournaments.
     """
     setup_logging()
+    config = load_config(args.config)
+    paths = config['data_paths']
+    betting_config = config['betting']
 
-    PROFITABLE_TOURNAMENTS = ["Davis Cup", "Fed Cup", "BJK Cup"]
-    log_info(f"Targeting profitable tournaments containing: {PROFITABLE_TOURNAMENTS}")
+    log_info(f"Targeting profitable tournaments containing: {betting_config['profitable_tournaments']}")
 
     # --- Load Final Model & All Data ---
     log_info("Loading model and all required data sources...")
-    model = joblib.load("models/form_xgb_model.joblib")
+    model = joblib.load(paths['model'])
     
-    # This data loading can be further optimized in a production system
+    # This data loading assumes raw data is available.
+    # In a production system, these might also be consolidated first.
     df_atp_players = pd.read_csv("data/tennis_atp/atp_players.csv", encoding='latin-1')
     df_wta_players = pd.read_csv("data/tennis_wta/wta_players.csv", encoding='latin-1')
     df_players = pd.concat([df_atp_players, df_wta_players], ignore_index=True)
@@ -53,15 +51,9 @@ def run_selective_value_pipeline():
     log_info("✅ All data loaded successfully.")
 
     # --- Login & Find Target Competitions ---
-    trading = betfairlightweight.APIClient(username=os.getenv('BF_USER'), password=os.getenv('BF_PASS'), app_key=os.getenv('BF_APP_KEY'))
-    log_info("Logging in to Betfair...")
-    trading.login_interactive()
+    trading = login_to_betfair(config)
 
-    tennis_competitions = trading.betting.list_competitions(filter=betfairlightweight.filters.market_filter(event_type_ids=['2']))
-    target_competition_ids = [
-        comp.competition.id for comp in tennis_competitions 
-        if any(keyword in comp.competition.name for keyword in PROFITABLE_TOURNAMENTS)
-    ]
+    target_competition_ids = get_tennis_competitions(trading, betting_config['profitable_tournaments'])
     
     if not target_competition_ids:
         log_info("No live matches found in profitable tournament types. Exiting.")
@@ -70,19 +62,11 @@ def run_selective_value_pipeline():
     log_info(f"Found {len(target_competition_ids)} target competitions to scan.")
 
     # --- Fetch Matches, Odds, and Find Value ---
-    market_catalogues = trading.betting.list_market_catalogue(
-        filter=betfairlightweight.filters.market_filter(competition_ids=target_competition_ids, market_type_codes=['MATCH_ODDS']),
-        max_results=200,
-        market_projection=['EVENT', 'RUNNER_METADATA', 'COMPETITION', 'DESCRIPTION']
-    )
-    market_ids = [market.market_id for market in market_catalogues]
-    if not market_ids:
+    market_catalogues, market_book_lookup = get_live_match_odds(trading, target_competition_ids)
+    if not market_catalogues:
         log_info("No live matches found in profitable tournament types. Exiting.")
         trading.logout()
         return
-
-    market_books = trading.betting.list_market_book(market_ids=market_ids, price_projection=betfairlightweight.filters.price_projection(price_data=['EX_BEST_OFFERS']))
-    market_book_lookup = {mb.market_id: mb for mb in market_books}
 
     log_info("Building features, predicting, and detecting value...")
     value_bets = []
@@ -118,13 +102,13 @@ def run_selective_value_pipeline():
             if p1_book.ex.available_to_back:
                 p1_odds = p1_book.ex.available_to_back[0].price
                 p1_ev = (win_prob_p1 * p1_odds) - 1
-                if p1_ev > DEFAULT_EV_THRESHOLD:
+                if p1_ev > betting_config['ev_threshold']:
                     value_bets.append({'match': f"{market.competition.name} - {market.event.name}", 'player_name': p1_meta.runner_name, 'odds': p1_odds, 'Model Prob': f"{win_prob_p1:.0%}", 'EV': f"{p1_ev:+.2%}"})
             
             if p2_book.ex.available_to_back:
                 p2_odds = p2_book.ex.available_to_back[0].price
                 p2_ev = ((1 - win_prob_p1) * p2_odds) - 1
-                if p2_ev > DEFAULT_EV_THRESHOLD:
+                if p2_ev > betting_config['ev_threshold']:
                      value_bets.append({'match': f"{market.competition.name} - {market.event.name}", 'player_name': p2_meta.runner_name, 'odds': p2_odds, 'Model Prob': f"{1 - win_prob_p1:.0%}", 'EV': f"{p2_ev:+.2%}"})
         except Exception as e:
             continue
@@ -140,4 +124,8 @@ def run_selective_value_pipeline():
     log_info("\nLogged out.")
 
 if __name__ == "__main__":
-    run_selective_value_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.yaml", help="Path to config file.")
+    args = parser.parse_args()
+    main(args)

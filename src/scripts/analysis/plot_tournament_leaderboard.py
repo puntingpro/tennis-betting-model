@@ -9,6 +9,7 @@ project_root = Path(__file__).resolve().parents[3]
 sys.path.append(str(project_root))
 
 from src.scripts.utils.logger import log_error, log_success, setup_logging
+from src.scripts.utils.config import load_config
 
 def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
     df = df.sort_values(by=sort_by, ascending=False).head(top_n)
@@ -27,30 +28,37 @@ def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
     return fig
 
 def main_cli(args):
+    """
+    Main function for plotting the leaderboard, driven by the config file.
+    """
     setup_logging()
+    # While this specific script doesn't use CLI args beyond the config,
+    # it's good practice to load it for consistency and future expansion.
+    config = load_config(args.config)
+    paths = config['data_paths']
+
     try:
-        df = pd.read_csv(args.input_csv)
-        fig = run_plot_leaderboard(df, sort_by=args.sort_by, top_n=args.top_n)
+        df = pd.read_csv(paths['tournament_summary'])
+        # Default values from the old parser can be hardcoded or moved to config
+        fig = run_plot_leaderboard(df, sort_by="roi", top_n=25)
         
-        if args.output_png:
-            output_path = Path(args.output_png)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(output_path, dpi=300)
-            log_success(f"Saved leaderboard plot to {output_path}")
+        # Saving and showing the plot
+        output_path_str = paths.get('plot_dir', 'data/plots/') + 'tournament_leaderboard.png'
+        output_path = Path(output_path_str)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=300)
+        log_success(f"Saved leaderboard plot to {output_path}")
         
-        if args.show:
-            plt.show()
+        # Show the plot in a window
+        plt.show()
+
     except FileNotFoundError:
-        log_error(f"Input file not found: {args.input_csv}")
+        log_error(f"Input file not found: {paths['tournament_summary']}")
     except Exception as e:
         log_error(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_csv", required=True)
-    parser.add_argument("--output_png", default=None)
-    parser.add_argument("--sort_by", default="roi")
-    parser.add_argument("--top_n", type=int, default=25)
-    parser.add_argument("--show", action="store_true")
+    parser.add_argument("--config", default="config.yaml", help="Path to config file.")
     args = parser.parse_args()
     main_cli(args)

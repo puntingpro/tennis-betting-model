@@ -1,0 +1,43 @@
+# config.yaml
+
+# File Paths
+data_paths:
+  # Raw data inputs for the 'build' process
+  raw_matches_glob: "data/tennis_atp/atp_matches_*.csv"
+  raw_rankings_glob: "data/tennis_atp/atp_rankings_*.csv"
+  raw_players: "data/tennis_atp/atp_players.csv"
+
+  # Processed data outputs
+  consolidated_features: "data/processed/all_advanced_features.csv"
+  model: "models/advanced_xgb_model.joblib"
+  backtest_results: "data/analysis/backtest_results.csv"
+  tournament_summary: "data/analysis/tournament_summary.csv"
+  plot_dir: "data/plots/"
+
+# Model & Backtesting Parameters
+model_params:
+  test_size: 0.2
+  random_state: 42
+  hyperparameter_trials: 100
+
+betting:
+  ev_threshold: 0.1
+  profitable_tournaments:
+    # --- EXPANDED TOURNAMENT LIST FOR YEAR-ROUND COVERAGE ---
+    - "Australian Open"
+    - "Roland Garros"
+    - "Wimbledon"
+    - "US Open"
+    - "Indian Wells"
+    - "Miami"
+    - "Monte Carlo"
+    - "Madrid"
+    - "Rome"
+    - "Canada"
+    - "Cincinnati"
+    - "Shanghai"
+    - "Paris"
+    - "ATP Finals"
+    - "WTA Finals"
+    - "Davis Cup"
+    - "BJK Cup"

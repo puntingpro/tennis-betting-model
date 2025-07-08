@@ -1,40 +1,32 @@
 # src/scripts/utils/schema.py
 
 import pandas as pd
+import pandera as pa
+from pandera.typing import DataFrame, Series
 
-# Define canonical schemas for different stages of the pipeline
-# This helps enforce consistency.
-SCHEMAS = {
-    "predictions": [
-        "match_id", "player_1", "player_2", "predicted_prob", "odds"
-    ],
-    "value_bets": [
-        "match_id", "player_1", "player_2", "predicted_prob", "odds", 
-        "expected_value", "kelly_fraction", "confidence_score"
-    ],
-    "simulations": [
-        "match_id", "player_name", "odds", "predicted_prob", "winner",
-        "expected_value", "kelly_fraction", "stake", "profit", "bankroll", "strategy"
-    ]
-}
+class ValueBetsSchema(pa.SchemaModel):
+    match_id: Series[str] = pa.Field(nullable=False)
+    player_1: Series[str] = pa.Field(nullable=True)
+    player_2: Series[str] = pa.Field(nullable=True)
+    predicted_prob: Series[float] = pa.Field(ge=0, le=1)
+    odds: Series[float] = pa.Field(gt=1)
+    expected_value: Series[float] = pa.Field()
+    kelly_fraction: Series[float] = pa.Field()
+    confidence_score: Series[float] = pa.Field(ge=0, le=1, nullable=True)
 
-def enforce_schema(df: pd.DataFrame, schema_name: str) -> pd.DataFrame:
-    """
-    Enforces a specific schema on a DataFrame. Adds missing columns
-    with pd.NA and reorders columns to match the schema.
-    """
-    if schema_name not in SCHEMAS:
-        raise ValueError(f"Schema '{schema_name}' not defined.")
-        
-    schema_cols = SCHEMAS[schema_name]
-    
-    # Add missing columns
-    for col in schema_cols:
-        if col not in df.columns:
-            df[col] = pd.NA
-            
-    # Return DataFrame with columns in the specified order
-    return df[schema_cols]
+    class Config:
+        strict = True
+        coerce = True
+
+def validate_data(df: pd.DataFrame, schema: pa.SchemaModel) -> DataFrame:
+    """Validates a DataFrame against a pandera schema."""
+    try:
+        schema.validate(df, lazy=True)
+        return df
+    except pa.errors.SchemaErrors as err:
+        print("Schema validation errors:")
+        print(err.failure_cases)
+        raise
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
