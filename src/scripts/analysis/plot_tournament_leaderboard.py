@@ -1,53 +1,56 @@
+# src/scripts/analysis/plot_tournament_leaderboard.py
+import sys
+from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
+import argparse
 
-from scripts.utils.file_utils import load_dataframes
-from scripts.utils.logger import log_error, log_info, log_success
+project_root = Path(__file__).resolve().parents[3]
+sys.path.append(str(project_root))
 
+from src.scripts.utils.logger import log_error, log_success, setup_logging
 
 def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
-    """
-    Generates and saves a leaderboard plot from tournament summary data.
-    """
     df = df.sort_values(by=sort_by, ascending=False).head(top_n)
 
     plt.style.use("seaborn-v0_8-whitegrid")
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(12, 10))
 
-    # Changed df["tournament"] to df["label"]
-    bars = plt.barh(df["label"], df[sort_by], edgecolor="black")
+    bars = plt.barh(df["tourney_name"], df[sort_by], edgecolor="black")
 
     ax.bar_label(bars, fmt="%.2f", padding=3)
     plt.xlabel(sort_by.replace("_", " ").title())
-    
-    # Changed Y-axis label to "Label" for consistency
-    plt.ylabel("Label")
-    
-    plt.title(f"Top {top_n} Tours by {sort_by.title()}", fontsize=16)
+    plt.ylabel("Tournament")
+    plt.title(f"Top {top_n} Tournaments by {sort_by.title()}", fontsize=16)
     plt.tight_layout()
+    plt.gca().invert_yaxis()
     return fig
 
-
 def main_cli(args):
-    """
-    Main CLI handler for plotting leaderboard.
-    Accepts args object from main.py.
-    """
+    setup_logging()
     try:
         df = pd.read_csv(args.input_csv)
         fig = run_plot_leaderboard(df, sort_by=args.sort_by, top_n=args.top_n)
         
+        if args.output_png:
+            output_path = Path(args.output_png)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(output_path, dpi=300)
+            log_success(f"Saved leaderboard plot to {output_path}")
+        
         if args.show:
             plt.show()
-
-        if args.output_png:
-            fig.savefig(args.output_png, dpi=300)
-            log_success(f"Saved leaderboard plot to {args.output_png}")
-
     except FileNotFoundError:
         log_error(f"Input file not found: {args.input_csv}")
-    except KeyError as e:
-        log_error(f"Invalid column name for sorting: {e}. Check your --sort_by argument.")
     except Exception as e:
         log_error(f"An unexpected error occurred: {e}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input_csv", required=True)
+    parser.add_argument("--output_png", default=None)
+    parser.add_argument("--sort_by", default="roi")
+    parser.add_argument("--top_n", type=int, default=25)
+    parser.add_argument("--show", action="store_true")
+    args = parser.parse_args()
+    main_cli(args)

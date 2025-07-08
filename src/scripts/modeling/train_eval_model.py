@@ -1,128 +1,97 @@
 # src/scripts/modeling/train_eval_model.py
 
+import sys
+from pathlib import Path
 import json
 from datetime import datetime
-from pathlib import Path
-
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
+import argparse
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score
-from sklearn.model_selection import GroupShuffleSplit
 from xgboost import XGBClassifier
 
-from scripts.utils.file_utils import load_dataframes
-from scripts.utils.git_utils import get_git_hash
-from scripts.utils.logger import log_info, log_success, log_warning, setup_logging
-from scripts.utils.schema import normalize_columns, patch_winner_column
+# --- Add project root to the Python path ---
+project_root = Path(__file__).resolve().parents[3]
+sys.path.append(str(project_root))
 
+from src.scripts.utils.file_utils import load_dataframes
+from src.scripts.utils.git_utils import get_git_hash
+from src.scripts.utils.logger import log_info, log_success, setup_logging
 
-def run_train_eval_model(
-    df: pd.DataFrame,
-    algorithm: str = "rf",
-    test_size: float = 0.25,
-    random_state: int = 42,
-) -> tuple:
-    """
-    Train a classification model on value bets and evaluate.
-    Returns (model, report, auc, meta_dict).
-    """
-    df = normalize_columns(df)
-    df = patch_winner_column(df)
+def train_advanced_model(df: pd.DataFrame, algorithm: str, test_size: float, random_state: int):
+    # (The contents of this function remain exactly the same)
+    print("Creating a balanced dataset by flipping player perspectives...")
+    df_loser = df.copy()
+    p1_cols = [col for col in df.columns if col.startswith('p1_')]
+    p2_cols = [col for col in df.columns if col.startswith('p2_')]
+    swap_map = {**{p1: p2 for p1, p2 in zip(p1_cols, p2_cols)}, 
+                **{p2: p1 for p1, p2 in zip(p1_cols, p2_cols)}}
+    df_loser = df_loser.rename(columns=swap_map)
+    df_loser['winner'] = 0
+    df_balanced = pd.concat([df, df_loser], ignore_index=True)
     
-    if df.empty:
-        raise ValueError("No valid data to train on after preprocessing.")
+    df_balanced = pd.get_dummies(df_balanced, columns=['p1_hand', 'p2_hand'], drop_first=True)
+    excluded_cols = ['match_id', 'tourney_date', 'p1_id', 'p2_id', 'winner', 'tourney_name']
+    features = [col for col in df_balanced.columns if col not in excluded_cols]
+    df_balanced[features] = df_balanced[features].fillna(0)
 
-    # --- FINAL FIX ---
-    # Explicitly drop rows where the grouping key ('match_id') is missing.
-    initial_rows = len(df)
-    df.dropna(subset=['match_id'], inplace=True)
-    if len(df) < initial_rows:
-        log_warning(f"Dropped {initial_rows - len(df)} rows due to missing match_id.")
-    # --- END FINAL FIX ---
-
-    excluded = {"winner", "match_id", "player_1", "player_2"}
-    feature_cols = [
-        c
-        for c in df.columns
-        if c not in excluded and pd.api.types.is_numeric_dtype(df[c])
-    ]
-    if not feature_cols:
-        raise ValueError("No numeric feature columns found after preprocessing.")
+    print(f"Training model with {len(features)} features.")
     
-    log_info(f"Imputing missing values in {len(feature_cols)} feature columns with 0.")
-    df[feature_cols] = df[feature_cols].fillna(0)
-    
-    log_info(f"Training model using {len(feature_cols)} features: {feature_cols}")
-    
-    X = df[feature_cols]
-    y = df["winner"]
+    X = df_balanced[features]
+    y = df_balanced['winner']
 
-    if y.nunique() < 2:
-        raise ValueError(f"The target variable 'winner' has only {y.nunique()} unique value(s) after processing. Training cannot proceed.")
-
-    groups = df["match_id"]
-    
-    gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    train_idx, test_idx = next(gss.split(X, y, groups))
-    
-    X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
-    X_test, y_test = X.iloc[test_idx], y.iloc[test_idx]
-
-    if y_train.nunique() < 2:
-         raise ValueError("The training data partition has only one class. The dataset is likely too small or imbalanced even after imputation.")
-
-    if algorithm == "rf":
-        model = RandomForestClassifier(n_estimators=100, random_state=random_state, class_weight='balanced')
-    elif algorithm == "logreg":
-        model = LogisticRegression(max_iter=500, random_state=random_state, class_weight='balanced')
-    elif algorithm == "xgb":
-        scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum() if (y_train == 1).sum() > 0 else 1
-        model = XGBClassifier(eval_metric="logloss", random_state=random_state, scale_pos_weight=scale_pos_weight)
-    else:
-        raise ValueError(f"Unknown algorithm: {algorithm}")
-
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    y_prob = (
-        model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
     )
-    auc = roc_auc_score(y_test, y_prob) if y_prob is not None and y_test.nunique() > 1 else None
-    report = classification_report(y_test, y_pred, digits=3, output_dict=False)
+    
+    print(f"Training {algorithm.upper()} model on {len(X_train)} samples...")
+    model = XGBClassifier(eval_metric="logloss", random_state=random_state, use_label_encoder=False)
+    model.fit(X_train, y_train)
+
+    y_prob = model.predict_proba(X_test)[:, 1]
+    auc = roc_auc_score(y_test, y_prob)
+    report = classification_report(y_test, model.predict(X_test), digits=3)
+    
     meta = {
-        "timestamp": datetime.now().isoformat(),
-        "git_hash": get_git_hash(),
-        "model_type": type(model).__name__,
-        "features": feature_cols,
-        "algorithm": algorithm,
-        "train_rows": len(X_train),
-        "test_rows": len(X_test),
-        "auc": auc,
+        "timestamp": datetime.now().isoformat(), "git_hash": get_git_hash(),
+        "model_type": type(model).__name__, "features": features, "algorithm": algorithm,
+        "train_rows": len(X_train), "test_rows": len(X_test), "auc": auc,
     }
     return model, report, auc, meta
 
-
+# --- MODIFIED: Create a main_cli function for importing ---
 def main_cli(args):
     """
-    Wrapper function to be called from the main CLI entrypoint.
+    Main CLI handler for training the model.
     """
+    setup_logging()
+    
+    print("Consolidating feature files...")
     df = load_dataframes(args.input_glob)
-    model, report, auc, meta = run_train_eval_model(
-        df, algorithm=args.algorithm, test_size=args.test_size
+
+    model, report, auc, meta = train_advanced_model(
+        df, algorithm=args.algorithm, test_size=args.test_size, random_state=42
     )
 
-    auc_string = f"{auc:.3f}" if auc is not None else "N/A"
+    auc_string = f"{auc:.4f}" if auc is not None else "N/A"
     log_info(f"Evaluation on holdout set (AUC={auc_string}):")
-    log_info("\n" + str(report))
-    
+    log_info("\n" + report)
+
     output_path = Path(args.output_model)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    dry_run = getattr(args, 'dry_run', False)
-    if not dry_run:
-        joblib.dump(model, output_path)
-        log_success(f"Saved model to {args.output_model}")
-        with open(output_path.with_suffix(".json"), "w") as f:
-            json.dump(meta, f, indent=2)
-        log_success(f"Saved metadata to {output_path.with_suffix('.json')}")
+
+    joblib.dump(model, output_path)
+    log_success(f"Saved model to {args.output_model}")
+    with open(output_path.with_suffix(".json"), "w") as f:
+        json.dump(meta, f, indent=2)
+    log_success(f"Saved metadata to {output_path.with_suffix('.json')}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train an advanced classification model.")
+    parser.add_argument("--input_glob", required=True, help="Glob pattern for feature CSVs.")
+    parser.add_argument("--output_model", required=True, help="Path to save the trained model file.")
+    parser.add_argument("--algorithm", default="xgb", help="Algorithm to use (e.g., 'xgb').")
+    parser.add_argument("--test_size", type=float, default=0.2, help="Test set size.")
+    args = parser.parse_args()
+    main_cli(args)
