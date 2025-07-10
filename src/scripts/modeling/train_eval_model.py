@@ -11,6 +11,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score
 from xgboost import XGBClassifier
 import optuna
+# 1. --- IMPORT THE PRUNING CALLBACK ---
+from optuna.integration import XGBoostPruningCallback
+
 
 # --- Add project root to the Python path ---
 project_root = Path(__file__).resolve().parents[3]
@@ -60,12 +63,28 @@ def train_advanced_model(df: pd.DataFrame, test_size: float, random_state: int, 
             'random_state': random_state
         }
         model = XGBClassifier(**param, use_label_encoder=False)
-        model.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=50, verbose=False)
+        
+        # 3. --- CREATE THE PRUNING CALLBACK ---
+        # This tells Optuna how to monitor the model's performance.
+        pruning_callback = XGBoostPruningCallback(trial, "validation_0-logloss")
+        
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_test, y_test)],
+            early_stopping_rounds=50,
+            verbose=False,
+            # 4. --- ADD THE CALLBACK TO THE FIT METHOD ---
+            callbacks=[pruning_callback]
+        )
+        
         y_prob = model.predict_proba(X_test)[:, 1]
         return roc_auc_score(y_test, y_prob)
 
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=n_trials)
+    # 2. --- ADD A PRUNER TO THE STUDY ---
+    # This tells Optuna to use the median of past trials to stop unpromising new ones.
+    study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner())
+    study.optimize(objective, n_trials=n_trials, n_jobs=-1) # Using n_jobs=-1 from before
 
     log_info(f"Best trial: {study.best_trial.value}")
     log_info(f"Best params: {study.best_params}")
@@ -96,9 +115,7 @@ def main_cli(args):
     params = config['model_params']
 
     print("Consolidating feature files...")
-    # --- FIX: Use the correct key from config.yaml ---
     df = load_dataframes(paths['consolidated_features'])
-    # --- END FIX ---
 
     model, report, auc, meta = train_advanced_model(
         df,

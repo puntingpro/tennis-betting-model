@@ -2,9 +2,10 @@
 
 import sys
 from pathlib import Path
-import numpy as np
+from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
+import numpy as np
 
 # --- Add project root to the Python path ---
 project_root = Path(__file__).resolve().parents[3]
@@ -46,6 +47,25 @@ def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
     stats_cols = ['match_id', 'player_id', 'win_perc', 'surface_win_perc', 'form_last_10']
     return df_player_matches[stats_cols]
 
+def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates point-in-time Head-to-Head (H2H) statistics for each match.
+    """
+    log_info("Calculating Head-to-Head (H2H) stats...")
+    h2h_records = defaultdict(lambda: defaultdict(int))
+    h2h_results = []
+    df = df.sort_values(by='tourney_date')
+    for row in tqdm(df.itertuples(), total=len(df), desc="H2H Calculation"):
+        p1_id, p2_id = row.p1_id, row.p2_id
+        player_pair = tuple(sorted((p1_id, p2_id)))
+        p1_wins_vs_p2 = h2h_records[player_pair][p1_id]
+        p2_wins_vs_p1 = h2h_records[player_pair][p2_id]
+        h2h_results.append({'match_id': row.match_id, 'h2h_p1_wins': p1_wins_vs_p2, 'h2h_p2_wins': p2_wins_vs_p1})
+        winner_id = row.winner_id
+        h2h_records[player_pair][winner_id] += 1
+    h2h_df = pd.DataFrame(h2h_results)
+    return pd.merge(df, h2h_df, on='match_id', how='left')
+
 def main(args):
     """
     Main function to build features, driven by the config file passed in args.
@@ -61,14 +81,18 @@ def main(args):
     
     log_info("Preprocessing data...")
     df_matches['tourney_date'] = pd.to_datetime(df_matches['tourney_date'], format='%Y%m%d', errors='coerce')
-    df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'], format='%Y%m%d', errors='coerce')
-    df_matches.dropna(subset=['tourney_date', 'winner_id', 'loser_id'], inplace=True)
+    df_matches.dropna(subset=['tourney_date'], inplace=True)
+
+    log_info("Filtering for matches from 2000 onwards for better data quality...")
+    df_matches = df_matches[df_matches['tourney_date'].dt.year >= 2000].copy()
     
-    # --- FIX: Ensure consistent data types ---
+    df_matches['tourney_date'] = df_matches['tourney_date'].dt.tz_localize('UTC')
+    df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'], format='%Y%m%d', utc=True, errors='coerce')
+    df_rankings.dropna(subset=['ranking_date'], inplace=True)
+    
     df_matches['winner_id'] = df_matches['winner_id'].astype('int64')
     df_matches['loser_id'] = df_matches['loser_id'].astype('int64')
     df_rankings['player'] = df_rankings['player'].astype('int64')
-    # --- END FIX ---
     
     df_matches['match_id'] = df_matches['tourney_id'].astype(str) + '-' + df_matches['match_num'].astype(str)
     df_matches = df_matches.sort_values(by='tourney_date')
@@ -79,10 +103,26 @@ def main(args):
     log_info("Merging stats and building final feature set...")
     features_df = df_matches[['match_id', 'tourney_date', 'tourney_name', 'surface', 'winner_id', 'loser_id']].copy()
     features_df = features_df.rename(columns={'winner_id': 'p1_id', 'loser_id': 'p2_id'})
+    
+    features_df = pd.merge(features_df, df_matches[['match_id', 'winner_id']], on='match_id')
+    features_df = add_h2h_stats(features_df)
+    features_df = features_df.drop(columns=['winner_id'])
+    
     features_df['winner'] = 1
 
-    features_df = pd.merge(features_df, player_stats_df, left_on=['match_id', 'p1_id'], right_on=['match_id', 'player_id'], how='left').rename(columns={'win_perc': 'p1_win_perc', 'surface_win_perc': 'p1_surface_win_perc', 'form_last_10': 'p1_form_last_10'}).drop('player_id', axis=1)
-    features_df = pd.merge(features_df, player_stats_df, left_on=['match_id', 'p2_id'], right_on=['match_id', 'player_id'], how='left').rename(columns={'win_perc': 'p2_win_perc', 'surface_win_perc': 'p2_surface_win_perc', 'form_last_10': 'p2_form_last_10'}).drop('player_id', axis=1)
+    # --- FIX: Correctly merge and rename player stats ---
+    # Merge for Player 1
+    p1_stats = player_stats_df.rename(columns={
+        'win_perc': 'p1_win_perc', 'surface_win_perc': 'p1_surface_win_perc', 'form_last_10': 'p1_form_last_10'
+    })
+    features_df = pd.merge(features_df, p1_stats, left_on=['match_id', 'p1_id'], right_on=['match_id', 'player_id'], how='left').drop('player_id', axis=1)
+
+    # Merge for Player 2
+    p2_stats = player_stats_df.rename(columns={
+        'win_perc': 'p2_win_perc', 'surface_win_perc': 'p2_surface_win_perc', 'form_last_10': 'p2_form_last_10'
+    })
+    features_df = pd.merge(features_df, p2_stats, left_on=['match_id', 'p2_id'], right_on=['match_id', 'player_id'], how='left').drop('player_id', axis=1)
+    # --- END FIX ---
 
     player_info = df_players[['player_id', 'hand', 'height']].set_index('player_id')
     features_df = features_df.merge(player_info, left_on='p1_id', right_index=True, how='left').rename(columns={'hand': 'p1_hand', 'height': 'p1_height'})
@@ -92,32 +132,17 @@ def main(args):
     df_rankings_sorted = df_rankings.sort_values(by='ranking_date')
     features_df_sorted = features_df.sort_values(by='tourney_date')
 
-    p1_ranks = pd.merge_asof(
-        left=features_df_sorted[['match_id', 'tourney_date', 'p1_id']],
-        right=df_rankings_sorted[['ranking_date', 'player', 'rank']],
-        left_on='tourney_date',
-        right_on='ranking_date',
-        left_by='p1_id',
-        right_by='player',
-        direction='backward'
-    ).rename(columns={'rank': 'p1_rank'})[['match_id', 'p1_rank']]
-
-    p2_ranks = pd.merge_asof(
-        left=features_df_sorted[['match_id', 'tourney_date', 'p2_id']],
-        right=df_rankings_sorted[['ranking_date', 'player', 'rank']],
-        left_on='tourney_date',
-        right_on='ranking_date',
-        left_by='p2_id',
-        right_by='player',
-        direction='backward'
-    ).rename(columns={'rank': 'p2_rank'})[['match_id', 'p2_rank']]
+    p1_ranks = pd.merge_asof(left=features_df_sorted[['match_id', 'tourney_date', 'p1_id']], right=df_rankings_sorted[['ranking_date', 'player', 'rank']], left_on='tourney_date', right_on='ranking_date', left_by='p1_id', right_by='player', direction='backward').rename(columns={'rank': 'p1_rank'})[['match_id', 'p1_rank']]
+    p2_ranks = pd.merge_asof(left=features_df_sorted[['match_id', 'tourney_date', 'p2_id']], right=df_rankings_sorted[['ranking_date', 'player', 'rank']], left_on='tourney_date', right_on='ranking_date', left_by='p2_id', right_by='player', direction='backward').rename(columns={'rank': 'p2_rank'})[['match_id', 'p2_rank']]
 
     features_df = pd.merge(features_df, p1_ranks, on='match_id', how='left')
     features_df = pd.merge(features_df, p2_ranks, on='match_id', how='left')
-    features_df['rank_diff'] = features_df['p1_rank'] - features_df['p2_rank']
     
-    features_df['h2h_p1_wins'] = 0
-    features_df['h2h_p2_wins'] = 0
+    DEFAULT_RANK = 500
+    features_df['p1_rank'].fillna(DEFAULT_RANK, inplace=True)
+    features_df['p2_rank'].fillna(DEFAULT_RANK, inplace=True)
+    
+    features_df['rank_diff'] = features_df['p1_rank'] - features_df['p2_rank']
 
     output_path = Path(paths['consolidated_features'])
     output_path.parent.mkdir(parents=True, exist_ok=True)

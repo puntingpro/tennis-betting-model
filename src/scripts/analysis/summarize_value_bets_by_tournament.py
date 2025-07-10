@@ -12,10 +12,22 @@ from src.scripts.utils.logger import log_error, log_success, setup_logging
 from src.scripts.utils.config import load_config
 
 def run_summarize_by_tournament(df: pd.DataFrame) -> pd.DataFrame:
-    # This assumes 'profit' is calculated correctly. Let's ensure it exists.
-    # A robust backtest would save profit per bet. Here we simulate it.
+    """
+    Summarizes backtest results by tournament with a corrected
+    profit and ROI calculation.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    # --- FIX: Correctly determine if the bet was a winner ---
+    # A bet on P1 wins if predicted_prob > 0.5 and winner == 1.
+    # A bet on P2 wins if predicted_prob < 0.5 and winner == 0.
+    # This is equivalent to checking if the rounded prediction matches the winner.
+    df['is_correct'] = (df['predicted_prob'].round() == df['winner'])
+
+    # Calculate profit based on whether the bet was correct
     df['profit'] = df.apply(
-        lambda row: (row['odds'] - 1) if row['winner'] == 1 else -1,
+        lambda row: (row['odds'] - 1) if row['is_correct'] else -1,
         axis=1
     )
     df['stake'] = 1 # Assume flat unit stake for ROI calculation
