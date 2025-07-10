@@ -32,6 +32,8 @@ def main():
     p_build.set_defaults(func=build_features_main)
 
     p_pipeline = subparsers.add_parser("pipeline", help="Run the live value-finding pipeline.")
+    # --- ADDED DRY-RUN FLAG ---
+    p_pipeline.add_argument("--dry-run", action="store_true", help="Run in dry-run mode without placing bets.")
     p_pipeline.set_defaults(func=pipeline_main)
 
     p_model = subparsers.add_parser("model", help="Train and evaluate models using features.")

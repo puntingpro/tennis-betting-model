@@ -14,7 +14,7 @@ import pandas as pd
 import argparse
 
 from src.scripts.utils.logger import log_info, log_success, setup_logging
-from src.scripts.utils.schema import enforce_schema, normalize_columns, patch_winner_column
+from src.scripts.utils.schema import normalize_columns, patch_winner_column
 
 def simulate_bankroll_growth(
     df: pd.DataFrame,

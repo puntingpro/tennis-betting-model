@@ -6,7 +6,7 @@ from decimal import Decimal, getcontext
 
 getcontext().prec = 10
 
-from src.scripts.utils.logger import setup_logging, log_info
+from src.scripts.utils.logger import setup_logging, log_info, log_warning
 from src.scripts.utils.config import load_config
 from src.scripts.utils.api import login_to_betfair, get_tennis_competitions, get_live_match_odds
 from src.scripts.utils.common import get_most_recent_ranking
@@ -73,6 +73,12 @@ def main(args):
     paths = config['data_paths']
     betting_config = config['betting']
 
+    # --- UPDATED: DRY-RUN LOGIC ---
+    if args.dry_run:
+        log_warning("🚀 Running in DRY-RUN mode. No real bets will be placed.")
+    else:
+        log_info("🚀 Running in LIVE mode. Real bets will be placed.")
+
     log_info(f"Targeting profitable tournaments containing: {betting_config['profitable_tournaments']}")
 
     log_info("Loading model and all required data sources...")
@@ -88,15 +94,12 @@ def main(args):
     df_wta_rankings = pd.read_csv("data/processed/wta_rankings_consolidated.csv")
     df_rankings = pd.concat([df_atp_rankings, df_wta_rankings], ignore_index=True)
     
-    # --- THE KEY FIX IS HERE ---
-    # Convert ranking_date to timezone-aware datetime objects
     df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'], utc=True)
     df_rankings = df_rankings.sort_values(by='ranking_date')
     
     log_info("✅ All data loaded successfully.")
 
     trading = login_to_betfair(config)
-    # ... (The rest of the main function remains the same)
     try:
         target_competition_ids = get_tennis_competitions(trading, betting_config['profitable_tournaments'])
         if not target_competition_ids:
@@ -112,10 +115,14 @@ def main(args):
         value_bets = process_markets(model, market_catalogues, market_book_lookup, player_info_lookup, df_rankings, betting_config)
 
         if value_bets:
-            print("\n--- ✅ Value Bets Found ✅ ---")
+            log_info("✅ Value Bets Found ✅")
             print(pd.DataFrame(value_bets).to_string(index=False))
+            # --- UPDATED: DRY-RUN LOGIC ---
+            if not args.dry_run:
+                log_warning("Placing live bets...")
+                # In a real application, the code to place bets would go here.
         else:
-            print("\n--- No Value Bets Found in Targeted Competitions ---")
+            log_info("--- No Value Bets Found in Targeted Competitions ---")
     finally:
         trading.logout()
         log_info("\nLogged out.")
@@ -125,5 +132,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml", help="Path to config file.")
+    # --- ADDED FOR STANDALONE EXECUTION ---
+    parser.add_argument("--dry-run", action="store_true", help="Run in dry-run mode without placing bets.")
     args = parser.parse_args()
     main(args)
