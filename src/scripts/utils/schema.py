@@ -4,45 +4,79 @@ import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame, Series
 
-class ValueBetsSchema(pa.SchemaModel):
-    match_id: Series[str] = pa.Field(nullable=False)
-    player_1: Series[str] = pa.Field(nullable=True)
-    player_2: Series[str] = pa.Field(nullable=True)
-    predicted_prob: Series[float] = pa.Field(ge=0, le=1)
-    odds: Series[float] = pa.Field(gt=1)
-    expected_value: Series[float] = pa.Field()
-    kelly_fraction: Series[float] = pa.Field()
-    confidence_score: Series[float] = pa.Field(ge=0, le=1, nullable=True)
+class RawMatchesSchema(pa.SchemaModel):
+    """
+    Schema for the raw consolidated match data before feature engineering.
+    Ensures that essential columns are present and have the correct data type.
+    """
+    tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
+    tourney_name: Series[str] = pa.Field(nullable=True)
+    surface: Series[str] = pa.Field(nullable=True)
+    match_num: Series[int] = pa.Field(coerce=True)
+    winner_id: Series[int] = pa.Field(coerce=True)
+    loser_id: Series[int] = pa.Field(coerce=True)
 
     class Config:
-        strict = True
+        strict = False  # Allows other columns to be present
+        coerce = True   # Coerces data types where possible
+
+class PlayerFeaturesSchema(pa.SchemaModel):
+    """
+    Schema for the final feature-engineered DataFrame.
+    Validates the data just before it's used for model training or backtesting.
+    """
+    match_id: Series[str] = pa.Field(nullable=False)
+    tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
+    surface: Series[str] = pa.Field(nullable=True)
+    p1_id: Series[int] = pa.Field(coerce=True)
+    p2_id: Series[int] = pa.Field(coerce=True)
+    winner: Series[int] = pa.Field(isin=[0, 1])
+
+    # Key Features
+    p1_rank: Series[float] = pa.Field(nullable=True, coerce=True)
+    p2_rank: Series[float] = pa.Field(nullable=True, coerce=True)
+    rank_diff: Series[float] = pa.Field(nullable=True, coerce=True)
+    h2h_p1_wins: Series[int] = pa.Field(ge=0, coerce=True)
+    h2h_p2_wins: Series[int] = pa.Field(ge=0, coerce=True)
+    p1_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    p2_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    p1_surface_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    p2_surface_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+
+    class Config:
+        strict = False
         coerce = True
 
-def validate_data(df: pd.DataFrame, schema: pa.SchemaModel) -> DataFrame:
-    """Validates a DataFrame against a pandera schema."""
+class BacktestResultsSchema(pa.SchemaModel):
+    """
+    Schema for the output of the backtest_strategy.py script.
+    Ensures the results have the expected columns and data types before analysis.
+    """
+    match_id: Series[str] = pa.Field(nullable=False)
+    tourney_name: Series[str] = pa.Field(nullable=True)
+    odds: Series[float] = pa.Field(gt=1)
+    predicted_prob: Series[float] = pa.Field(ge=0, le=1)
+    winner: Series[int] = pa.Field(isin=[0, 1])
+    expected_value: Series[float] = pa.Field()
+    kelly_fraction: Series[float] = pa.Field()
+
+    class Config:
+        strict = True  # Be strict on the final output columns
+        coerce = True
+
+def validate_data(df: pd.DataFrame, schema: pa.SchemaModel, context: str) -> DataFrame:
+    """
+    Validates a DataFrame against a pandera schema, providing a clear context on error.
+    """
     try:
-        schema.validate(df, lazy=True)
-        return df
+        print(f"Validating schema for: {context}...")
+        validated_df = schema.validate(df, lazy=True)
+        print(f"✅ Schema validation successful for: {context}")
+        return validated_df
     except pa.errors.SchemaErrors as err:
-        print("Schema validation errors:")
+        print(f"❌ Schema validation failed for: {context}")
+        print("Failure cases:")
         print(err.failure_cases)
+        # Optionally, you might want to save the failing data for inspection
+        # err.failure_cases.to_csv(f"data/analysis/schema_failures_{context}.csv")
         raise
-
-def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalizes all column names to lowercase and replaces spaces with underscores.
-    """
-    df.columns = [c.lower().replace(' ', '_') for c in df.columns]
-    return df
-
-def patch_winner_column(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Handles the 'winner' column, ensuring it's numeric.
-    It checks for a 'result' column and converts it if 'winner' is missing.
-    """
-    if 'winner' not in df.columns and 'result' in df.columns:
-        df['winner'] = pd.to_numeric(df['result'], errors='coerce')
-    elif 'winner' in df.columns:
-        df['winner'] = pd.to_numeric(df['winner'], errors='coerce')
-        
-    return df

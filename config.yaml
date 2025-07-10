@@ -2,13 +2,18 @@
 
 # File Paths
 data_paths:
-  # Raw data inputs for the 'build' process
-  raw_matches_glob: "data/tennis_atp/atp_matches_*.csv"
-  raw_rankings_glob: "data/tennis_atp/atp_rankings_*.csv"
+  # Raw data inputs
+  raw_atp_matches_glob: "data/tennis_atp/atp_matches_*.csv"
+  raw_wta_matches_glob: "data/tennis_wta/wta_matches_*.csv"
+  raw_atp_rankings_glob: "data/tennis_atp/atp_rankings_*.csv"
+  raw_wta_rankings_glob: "data/tennis_wta/wta_rankings_*.csv"
   raw_players: "data/tennis_atp/atp_players.csv"
 
   # Processed data outputs
+  consolidated_matches: "data/processed/all_matches.csv"
+  consolidated_rankings: "data/processed/all_rankings.csv"
   consolidated_features: "data/processed/all_advanced_features.csv"
+  elo_ratings: "data/processed/elo_ratings.csv"
   model: "models/advanced_xgb_model.joblib"
   backtest_results: "data/analysis/backtest_results.csv"
   tournament_summary: "data/analysis/tournament_summary.csv"

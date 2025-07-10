@@ -1,7 +1,9 @@
 # 🎾 Tennis Value Betting Pipeline (P1v2)
 A modern, API-driven, and modular pipeline for finding and simulating value bets in ATP and WTA tennis.
 
-[![CI Status](https://github.com/puntingpro/P1v2/actions/workflows/ci.yml/badge.svg)](https://github.com/puntingpro/P1v2/actions/workflows/ci.yml) [![Codecov](https://codecov.io/gh/puntingpro/P1v2/graph/badge.svg?token=YOUR_CODECOV_TOKEN_HERE)](https://codecov.io/gh/puntingpro/P1v2)
+# --- MODIFIED: Removed placeholder token ---
+[![CI Status](https://github.com/puntingpro/P1v2/actions/workflows/ci.yml/badge.svg)](https://github.com/puntingpro/P1v2/actions/workflows/ci.yml) [![Codecov](https://codecov.io/gh/puntingpro/P1v2/graph/badge.svg)](https://codecov.io/gh/puntingpro/P1v2)
+# --- END MODIFICATION ---
 
 ### **Overview**
 This project uses a two-stage process that combines historical data with a live API connection to find profitable betting opportunities.

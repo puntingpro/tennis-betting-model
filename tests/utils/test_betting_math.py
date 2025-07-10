@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from scripts.utils.betting_math import add_ev_and_kelly
+from src.scripts.utils.betting_math import add_ev_and_kelly
 
 
 def test_add_ev_and_kelly():

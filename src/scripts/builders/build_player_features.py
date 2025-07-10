@@ -7,18 +7,17 @@ import pandas as pd
 from tqdm import tqdm
 import numpy as np
 
-# --- Add project root to the Python path ---
+# Add project root to the Python path
 project_root = Path(__file__).resolve().parents[3]
 sys.path.append(str(project_root))
 
 from src.scripts.utils.config import load_config
-from src.scripts.utils.file_utils import load_dataframes
 from src.scripts.utils.logger import setup_logging, log_info, log_success
+from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
 
+# --- UNCHANGED FUNCTIONS ---
 def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates expanding and rolling stats for each player in a vectorized manner.
-    """
+    # ... (content remains the same)
     id_vars = ['match_id', 'tourney_date', 'surface']
     p1_cols = ['winner_id', 'loser_id']
     p2_cols = ['loser_id', 'winner_id']
@@ -48,9 +47,7 @@ def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
     return df_player_matches[stats_cols]
 
 def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates point-in-time Head-to-Head (H2H) statistics for each match.
-    """
+    # ... (content remains the same)
     log_info("Calculating Head-to-Head (H2H) stats...")
     h2h_records = defaultdict(lambda: defaultdict(int))
     h2h_results = []
@@ -66,35 +63,34 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
     h2h_df = pd.DataFrame(h2h_results)
     return pd.merge(df, h2h_df, on='match_id', how='left')
 
+
 def main(args):
-    """
-    Main function to build features, driven by the config file passed in args.
-    """
     setup_logging()
     config = load_config(args.config)
     paths = config['data_paths']
 
-    log_info("Loading and consolidating raw data...")
-    df_matches = load_dataframes(paths['raw_matches_glob'])
-    df_rankings = load_dataframes(paths['raw_rankings_glob'])
+    # --- MODIFIED: Load consolidated and other required data ---
+    log_info("Loading consolidated data and other required files...")
+    df_matches = pd.read_csv(paths['consolidated_matches'])
+    df_rankings = pd.read_csv(paths['consolidated_rankings'])
     df_players = pd.read_csv(paths['raw_players'], encoding='latin-1')
+    df_elo = pd.read_csv(paths['elo_ratings'])
     
     log_info("Preprocessing data...")
-    df_matches['tourney_date'] = pd.to_datetime(df_matches['tourney_date'], format='%Y%m%d', errors='coerce')
+    df_matches['tourney_date'] = pd.to_datetime(df_matches['tourney_date'], errors='coerce').dt.tz_localize('UTC')
+    df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'], utc=True, errors='coerce')
     df_matches.dropna(subset=['tourney_date'], inplace=True)
-
-    log_info("Filtering for matches from 2000 onwards for better data quality...")
-    df_matches = df_matches[df_matches['tourney_date'].dt.year >= 2000].copy()
-    
-    df_matches['tourney_date'] = df_matches['tourney_date'].dt.tz_localize('UTC')
-    df_rankings['ranking_date'] = pd.to_datetime(df_rankings['ranking_date'], format='%Y%m%d', utc=True, errors='coerce')
     df_rankings.dropna(subset=['ranking_date'], inplace=True)
+
+    log_info("Filtering for matches from 2000 onwards...")
+    df_matches = df_matches[df_matches['tourney_date'].dt.year >= 2000].copy()
     
     df_matches['winner_id'] = df_matches['winner_id'].astype('int64')
     df_matches['loser_id'] = df_matches['loser_id'].astype('int64')
     df_rankings['player'] = df_rankings['player'].astype('int64')
     
-    df_matches['match_id'] = df_matches['tourney_id'].astype(str) + '-' + df_matches['match_num'].astype(str)
+    if 'match_id' not in df_matches.columns:
+        df_matches['match_id'] = df_matches['tourney_id'].astype(str) + '-' + df_matches['match_num'].astype(str)
     df_matches = df_matches.sort_values(by='tourney_date')
 
     log_info("Calculating player stats (vectorized)...")
@@ -106,23 +102,24 @@ def main(args):
     
     features_df = pd.merge(features_df, df_matches[['match_id', 'winner_id']], on='match_id')
     features_df = add_h2h_stats(features_df)
+    features_df['winner'] = (features_df['p1_id'] == features_df['winner_id']).astype(int)
     features_df = features_df.drop(columns=['winner_id'])
-    
-    features_df['winner'] = 1
 
-    # --- FIX: Correctly merge and rename player stats ---
-    # Merge for Player 1
+    log_info("Merging Elo ratings...")
+    features_df = pd.merge(features_df, df_elo,
+                           left_on=['match_id', 'p1_id', 'p2_id'],
+                           right_on=['match_id', 'p1_id_elo', 'p2_id_elo'],
+                           how='left').drop(columns=['p1_id_elo', 'p2_id_elo'])
+
     p1_stats = player_stats_df.rename(columns={
         'win_perc': 'p1_win_perc', 'surface_win_perc': 'p1_surface_win_perc', 'form_last_10': 'p1_form_last_10'
     })
     features_df = pd.merge(features_df, p1_stats, left_on=['match_id', 'p1_id'], right_on=['match_id', 'player_id'], how='left').drop('player_id', axis=1)
-
-    # Merge for Player 2
+    
     p2_stats = player_stats_df.rename(columns={
         'win_perc': 'p2_win_perc', 'surface_win_perc': 'p2_surface_win_perc', 'form_last_10': 'p2_form_last_10'
     })
     features_df = pd.merge(features_df, p2_stats, left_on=['match_id', 'p2_id'], right_on=['match_id', 'player_id'], how='left').drop('player_id', axis=1)
-    # --- END FIX ---
 
     player_info = df_players[['player_id', 'hand', 'height']].set_index('player_id')
     features_df = features_df.merge(player_info, left_on='p1_id', right_index=True, how='left').rename(columns={'hand': 'p1_hand', 'height': 'p1_height'})
@@ -143,6 +140,9 @@ def main(args):
     features_df['p2_rank'].fillna(DEFAULT_RANK, inplace=True)
     
     features_df['rank_diff'] = features_df['p1_rank'] - features_df['p2_rank']
+    features_df['elo_diff'] = features_df['p1_elo'] - features_df['p2_elo']
+
+    features_df = validate_data(features_df, PlayerFeaturesSchema, "player_features")
 
     output_path = Path(paths['consolidated_features'])
     output_path.parent.mkdir(parents=True, exist_ok=True)

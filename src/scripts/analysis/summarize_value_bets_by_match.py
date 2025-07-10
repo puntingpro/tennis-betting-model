@@ -9,7 +9,8 @@ sys.path.append(str(project_root))
 
 from src.scripts.utils.file_utils import load_dataframes
 from src.scripts.utils.logger import log_error, log_success, setup_logging
-from src.scripts.utils.schema import patch_winner_column
+# --- MODIFIED: Import from the correct utility file ---
+from src.scripts.utils.common import patch_winner_column
 
 def run_summarize_value_bets_by_match(df: pd.DataFrame) -> pd.DataFrame:
     df = patch_winner_column(df)

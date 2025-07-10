@@ -7,14 +7,14 @@ import os
 # --- Add project root to the Python path ---
 project_root = Path(__file__).resolve().parents[3]
 sys.path.append(str(project_root))
-# --- End of fix ---
 
 import numpy as np
 import pandas as pd
 import argparse
 
 from src.scripts.utils.logger import log_info, log_success, setup_logging
-from src.scripts.utils.schema import normalize_columns, patch_winner_column
+# --- MODIFIED: Import from the correct utility file ---
+from src.scripts.utils.common import normalize_columns, patch_winner_column
 
 def simulate_bankroll_growth(
     df: pd.DataFrame,
@@ -46,10 +46,8 @@ def simulate_bankroll_growth(
     else:
         raise ValueError(f"Unknown staking strategy: {strategy}")
 
-    # Ensure the 'winner' column is numeric (0 or 1)
     df['winner'] = pd.to_numeric(df['winner'], errors='coerce')
     
-    # Calculate profit/loss for each bet
     df["profit"] = np.where(
         df["winner"] == 1, df["stake"] * (df["odds"] - 1), -df["stake"]
     )
@@ -73,11 +71,10 @@ def main_cli():
     simulation.to_csv(output_path, index=False)
     log_info(f"Saved full simulation results to {output_path}")
 
-    # --- NEW: Calculate and print summary ---
     if not simulation.empty:
         total_bets = len(simulation)
         final_bankroll = simulation['bankroll'].iloc[-1]
-        total_profit = final_bankroll - 1000.0 # Assuming 1000 is the initial bankroll
+        total_profit = final_bankroll - 1000.0
         total_wagered = simulation['stake'].sum()
         roi = (total_profit / total_wagered) * 100 if total_wagered > 0 else 0
         winning_bets = simulation[simulation['profit'] > 0]
@@ -98,8 +95,6 @@ def main_cli():
         --------------------------
         """
         print(summary)
-    # --- END NEW SECTION ---
-
 
 if __name__ == "__main__":
     main_cli()

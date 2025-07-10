@@ -22,8 +22,8 @@ def test_process_markets_identifies_value_bet():
     # Mock the market and book data from the API
     mock_market = MagicMock()
     mock_market.market_id = "1.2345"
-    # --- FIX: Make market_start_time timezone-aware ---
     mock_market.market_start_time = pd.to_datetime("2023-10-26T12:00:00Z")
+    mock_market.market_name = "ATP Challenger Hard" # Added for surface extraction
     mock_market.event.name = "Player A vs Player B"
     mock_market.competition.name = "Mock Open"
     mock_market.runners = [MagicMock(runner_name="Player A", selection_id=101), MagicMock(runner_name="Player B", selection_id=102)]
@@ -41,12 +41,19 @@ def test_process_markets_identifies_value_bet():
         102: {'hand': 'L', 'height': 185.0}
     }
     mock_df_rankings = pd.DataFrame({
-        # --- FIX: Make ranking_date timezone-aware ---
         'ranking_date': pd.to_datetime(['2023-01-01', '2023-01-01'], utc=True),
         'player': [101, 102],
         'rank': [10.0, 25.0]
     }).sort_values(by='ranking_date')
     
+    # --- ADDED: Mock historical matches DataFrame for the new argument ---
+    mock_df_matches = pd.DataFrame({
+        'tourney_date': pd.to_datetime(['2022-01-01'], utc=True),
+        'surface': ['Hard'],
+        'winner_id': [101],
+        'loser_id': [102]
+    })
+
     mock_betting_config = {'ev_threshold': 0.1}
 
     # 2. --- Run the core logic function directly ---
@@ -56,6 +63,8 @@ def test_process_markets_identifies_value_bet():
         market_book_lookup={"1.2345": mock_book},
         player_info_lookup=mock_player_info_lookup,
         df_rankings=mock_df_rankings,
+        # --- ADDED: Pass the new mock DataFrame ---
+        df_matches=mock_df_matches,
         betting_config=mock_betting_config
     )
 
@@ -65,4 +74,5 @@ def test_process_markets_identifies_value_bet():
     value_bet = result[0]
     assert value_bet['player_name'] == "Player A"
     assert value_bet['odds'] == 2.0
+    # EV = (0.60 * 2.0) - 1.0 = 0.20 -> +20.00%
     assert value_bet['EV'] == "+20.00%"

@@ -3,7 +3,7 @@ import os
 import betfairlightweight
 from betfairlightweight.exceptions import APIError
 from typing import List, Tuple
-from .logger import log_info
+from .logger import log_info, log_warning # --- MODIFIED: Added log_warning
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     """Logs in to the Betfair API."""
@@ -37,14 +37,15 @@ def get_live_match_odds(trading: betfairlightweight.APIClient, competition_ids: 
             market_projection=['EVENT', 'RUNNER_METADATA', 'COMPETITION', 'DESCRIPTION']
         )
     except APIError as e:
-        # --- FINAL FIX: Check the string representation of the error ---
-        if "DSC-0018" in str(e):
+        # --- MODIFIED: More robust error handling ---
+        error_string = str(e)
+        if "DSC-0018" in error_string or "NO_MARKETS" in error_string:
             log_info("No active match odds markets found for the targeted competitions at this time.")
-            return [], {}
-        # --- END FINAL FIX ---
         else:
-            # Re-raise other, more critical API errors
-            raise
+            log_warning(f"An unexpected Betfair API error occurred: {error_string}")
+        # In either case, return empty lists to prevent a crash
+        return [], {}
+        # --- END MODIFICATION ---
 
     market_ids = [market.market_id for market in market_catalogues]
     if not market_ids:
