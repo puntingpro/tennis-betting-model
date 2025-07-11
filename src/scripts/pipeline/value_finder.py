@@ -5,6 +5,7 @@ from decimal import Decimal
 from src.scripts.utils.logger import log_info
 from src.scripts.utils.common import get_most_recent_ranking
 from src.scripts.pipeline.feature_engineering import get_h2h_stats, get_player_form_and_win_perc
+from src.scripts.utils.alerter import send_alert # --- ADDED ---
 
 def process_markets(model, market_catalogues, market_book_lookup, player_info_lookup, df_rankings, df_matches, betting_config):
     """
@@ -56,15 +57,22 @@ def process_markets(model, market_catalogues, market_book_lookup, player_info_lo
                 p1_odds = Decimal(str(p1_book.ex.available_to_back[0].price))
                 p1_ev = (win_prob_p1 * p1_odds) - Decimal('1.0')
                 if p1_ev > ev_threshold:
-                    value_bets.append({'match': f"{market.competition.name} - {market.event.name}", 'player_name': p1_meta.runner_name, 'odds': float(p1_odds), 'Model Prob': f"{win_prob_p1:.2%}", 'EV': f"{p1_ev:+.2%}"})
+                    bet_info = {'match': f"{market.competition.name} - {market.event.name}", 'player_name': p1_meta.runner_name, 'odds': float(p1_odds), 'Model Prob': f"{win_prob_p1:.2%}", 'EV': f"{p1_ev:+.2%}"}
+                    value_bets.append(bet_info)
             
             if p2_book.ex.available_to_back:
                 p2_odds = Decimal(str(p2_book.ex.available_to_back[0].price))
                 p2_ev = (win_prob_p2 * p2_odds) - Decimal('1.0')
                 if p2_ev > ev_threshold:
-                     value_bets.append({'match': f"{market.competition.name} - {market.event.name}", 'player_name': p2_meta.runner_name, 'odds': float(p2_odds), 'Model Prob': f"{win_prob_p2:.2%}", 'EV': f"{p2_ev:+.2%}"})
+                     bet_info = {'match': f"{market.competition.name} - {market.event.name}", 'player_name': p2_meta.runner_name, 'odds': float(p2_odds), 'Model Prob': f"{win_prob_p2:.2%}", 'EV': f"{p2_ev:+.2%}"}
+                     value_bets.append(bet_info)
         except Exception as e:
             log_info(f"Skipping market due to processing error: {e}")
             continue
     
+    # --- ADDED: Send an alert if value bets are found ---
+    if value_bets:
+        bet_df = pd.DataFrame(value_bets)
+        send_alert(bet_df.to_string(index=False))
+
     return value_bets

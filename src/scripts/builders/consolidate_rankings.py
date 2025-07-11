@@ -1,4 +1,4 @@
-# src/scripts/utils/consolidate_rankings.py
+# src/scripts/builders/consolidate_rankings.py
 
 import argparse
 import glob
@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
-from src.scripts.utils.config import load_config # Added import
+from src.scripts.utils.config import load_config
 
 def consolidate_rankings(input_glob: str, output_csv: Path):
     """
@@ -18,7 +18,7 @@ def consolidate_rankings(input_glob: str, output_csv: Path):
 
     print(f"Found {len(files)} ranking files to consolidate.")
 
-    df_list = [pd.read_csv(f) for f in tqdm(files, desc="Reading Ranking CSVs")]
+    df_list = [pd.read_csv(f, low_memory=False) for f in tqdm(files, desc="Reading Ranking CSVs")]
     df = pd.concat(df_list, ignore_index=True)
 
     df['ranking_date'] = pd.to_datetime(df['ranking_date'], format='%Y%m%d')
@@ -33,13 +33,16 @@ def main():
     config = load_config("config.yaml")
     paths = config['data_paths']
 
-    # Consolidate ATP and WTA rankings
     atp_glob = paths['raw_atp_rankings_glob']
     wta_glob = paths.get('raw_wta_rankings_glob', '')
-    
-    full_glob_pattern = f"{Path(atp_glob).parent}/*.csv"
 
-    consolidate_rankings(full_glob_pattern, Path(paths['consolidated_rankings']))
+    all_files = glob.glob(atp_glob) + (glob.glob(wta_glob) if wta_glob else [])
+    
+    if all_files:
+        parent_dir = Path(all_files[0]).parent
+        full_glob_pattern = str(parent_dir / "*.csv")
+        consolidate_rankings(full_glob_pattern, Path(paths['consolidated_rankings']))
+
 
 if __name__ == "__main__":
     main()

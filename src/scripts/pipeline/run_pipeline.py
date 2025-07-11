@@ -2,23 +2,21 @@
 
 import pandas as pd
 import joblib
-
 from src.scripts.utils.logger import setup_logging, log_info, log_warning
 from src.scripts.utils.config import load_config
 from src.scripts.utils.api import login_to_betfair, get_tennis_competitions, get_live_match_odds
 from src.scripts.utils.data_loader import load_pipeline_data
 from src.scripts.pipeline.value_finder import process_markets
 
-def main(args):
+def run_pipeline_once(config: dict, dry_run: bool):
     """
-    Main pipeline function: Connects to API, loads data, and finds value.
+    Runs a single iteration of the value-finding pipeline.
+    This function is designed to be called by both manual and automated scripts.
     """
-    setup_logging()
-    config = load_config(args.config)
     paths = config['data_paths']
     betting_config = config['betting']
 
-    if args.dry_run:
+    if dry_run:
         log_warning("🚀 Running in DRY-RUN mode. No real bets will be placed.")
     else:
         log_info("🚀 Running in LIVE mode.")
@@ -41,16 +39,25 @@ def main(args):
 
         value_bets = process_markets(model, market_catalogues, market_book_lookup, player_info_lookup, df_rankings, df_matches, betting_config)
 
-        if value_bets:
-            log_info("✅ Value Bets Found ✅")
-            print(pd.DataFrame(value_bets).to_string(index=False))
-            if not args.dry_run:
-                log_warning("Placing live bets...")
+        if not value_bets:
+            log_info("--- No Value Bets Found in This Run ---")
+        elif dry_run:
+            log_info("Value bets found and alerted in DRY-RUN mode.")
         else:
-            log_info("--- No Value Bets Found in Targeted Competitions ---")
+            log_warning("Placing live bets...")
+            # In a real application, the code to place bets would go here.
     finally:
         trading.logout()
         log_info("\nLogged out.")
+
+
+def main(args):
+    """
+    Main CLI handler for running a single pipeline instance.
+    """
+    setup_logging()
+    config = load_config(args.config)
+    run_pipeline_once(config, args.dry_run)
 
 
 if __name__ == "__main__":

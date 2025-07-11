@@ -1,4 +1,4 @@
-# src/scripts/utils/consolidate_data.py
+# src/scripts/builders/consolidate_data.py
 
 import argparse
 import glob
@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
-from src.scripts.utils.config import load_config # Added import
+from src.scripts.utils.config import load_config
 
 def consolidate_data(input_glob: str, output_csv: Path) -> None:
     """
@@ -37,18 +37,20 @@ def consolidate_data(input_glob: str, output_csv: Path) -> None:
 
 def main():
     """Main CLI entrypoint."""
-    # This function is now designed to be called from the main CLI script
     config = load_config("config.yaml")
     paths = config['data_paths']
     
-    # Consolidate ATP and WTA matches together
     atp_glob = paths['raw_atp_matches_glob']
-    wta_glob = paths.get('raw_wta_matches_glob', '') # Use .get for optional WTA data
+    wta_glob = paths.get('raw_wta_matches_glob', '')
     
-    # Combine glob patterns
-    full_glob_pattern = f"{Path(atp_glob).parent}/*.csv"
+    # Combine glob patterns from both directories
+    all_files = glob.glob(atp_glob) + (glob.glob(wta_glob) if wta_glob else [])
     
-    consolidate_data(full_glob_pattern, Path(paths['consolidated_matches']))
+    # Create a unified glob pattern from the parent directory of the first file
+    if all_files:
+        parent_dir = Path(all_files[0]).parent
+        full_glob_pattern = str(parent_dir / "*.csv")
+        consolidate_data(full_glob_pattern, Path(paths['consolidated_matches']))
 
 if __name__ == "__main__":
     main()

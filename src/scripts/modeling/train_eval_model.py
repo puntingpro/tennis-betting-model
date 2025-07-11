@@ -7,8 +7,8 @@ from datetime import datetime
 import joblib
 import pandas as pd
 import argparse
-import numpy as np # Added for averaging
-from sklearn.model_selection import StratifiedKFold # --- MODIFIED ---
+import numpy as np
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import classification_report, roc_auc_score
 from xgboost import XGBClassifier
 import optuna
@@ -25,7 +25,6 @@ from src.scripts.utils.config import load_config
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
 
 def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_splits: int = 5):
-    # --- MODIFIED: Removed test_size, added n_splits for cross-validation ---
     df = validate_data(df, PlayerFeaturesSchema, "model_training_input")
 
     print("Creating a balanced dataset by flipping player perspectives...")
@@ -49,7 +48,6 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
     y = df_balanced['winner']
 
     def objective(trial):
-        # --- MODIFIED: Cross-validation loop inside the objective function ---
         param = {
             'objective': 'binary:logistic', 'eval_metric': 'logloss',
             'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
@@ -84,18 +82,18 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
     log_info(f"Best trial average AUC: {study.best_trial.value}")
     log_info(f"Best params: {study.best_params}")
 
-    # --- FINAL MODEL TRAINING on all data ---
     log_info("Training final model on the entire dataset with the best parameters...")
     final_model = XGBClassifier(**study.best_params, use_label_encoder=False, random_state=random_state)
-    final_model.fit(X, y) # Train on all data
+    final_model.fit(X, y)
 
+    # --- MODIFIED: Add feature importances to the metadata ---
     meta = {
         "timestamp": datetime.now().isoformat(), "git_hash": get_git_hash(),
-        "model_type": type(final_model).__name__, "features": features, "algorithm": "xgb",
-        "train_rows": len(X), "cross_val_auc": study.best_trial.value,
+        "model_type": type(final_model).__name__, "features": features,
+        "feature_importances": final_model.feature_importances_.tolist(), # Convert to list for JSON
+        "algorithm": "xgb", "train_rows": len(X), "cross_val_auc": study.best_trial.value,
         "best_params": study.best_params
     }
-    # Note: We can't generate a single classification report as we no longer have a single holdout set.
     return final_model, None, study.best_trial.value, meta
 
 def main_cli(args):
@@ -104,7 +102,7 @@ def main_cli(args):
     paths = config['data_paths']
     params = config['model_params']
 
-    print("Consolidating feature files...")
+    print("Loading feature files...")
     df = pd.read_csv(paths['consolidated_features'])
     df['tourney_date'] = pd.to_datetime(df['tourney_date'])
 
@@ -112,7 +110,6 @@ def main_cli(args):
         df,
         random_state=params['random_state'],
         n_trials=params['hyperparameter_trials']
-        # test_size is no longer needed
     )
 
     auc_string = f"{auc:.4f}" if auc is not None else "N/A"
