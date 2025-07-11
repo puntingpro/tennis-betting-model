@@ -39,13 +39,6 @@ jobs:
           gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp
           gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta
 
-      # --- ADDED THIS STEP ---
-      - name: Create Betfair Certificate Files
-        run: |
-          mkdir -p certs
-          echo "${{ secrets.BF_CERT }}" > certs/cert.pem
-          echo "${{ secrets.BF_KEY }}" > certs/key.pem
-
       - name: Install dependencies
         run: pip install -r requirements.txt
       
@@ -54,6 +47,8 @@ jobs:
           BF_USER: ${{ secrets.BF_USER }}
           BF_PASS: ${{ secrets.BF_PASS }}
           BF_APP_KEY: ${{ secrets.BF_APP_KEY }}
+          BF_CERT: ${{ secrets.BF_CERT }}
+          BF_KEY: ${{ secrets.BF_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -u main.py automate
