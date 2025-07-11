@@ -6,6 +6,7 @@ numpy
 optuna
 pandas
 pandera
+python-json-logger # --- ADDED ---
 PyYAML
 requests
 schedule
