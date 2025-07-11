@@ -1,6 +1,5 @@
 # src/scripts/modeling/train_eval_model.py
 
-import sys
 from pathlib import Path
 import json
 from datetime import datetime
@@ -13,10 +12,6 @@ from sklearn.metrics import classification_report, roc_auc_score
 from xgboost import XGBClassifier
 import optuna
 from optuna.integration import XGBoostPruningCallback
-
-# Add project root to the Python path
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
 
 from src.scripts.utils.file_utils import load_dataframes
 from src.scripts.utils.git_utils import get_git_hash
@@ -86,7 +81,6 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
     final_model = XGBClassifier(**study.best_params, use_label_encoder=False, random_state=random_state)
     final_model.fit(X, y)
 
-    # --- MODIFIED: Add feature importances to the metadata ---
     meta = {
         "timestamp": datetime.now().isoformat(), "git_hash": get_git_hash(),
         "model_type": type(final_model).__name__, "features": features,

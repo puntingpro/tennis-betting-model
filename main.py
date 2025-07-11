@@ -4,10 +4,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add project root to the Python path
-project_root = Path(__file__).resolve().parent
-sys.path.append(str(project_root))
-
 # --- MODIFIED: Corrected import paths for consolidation scripts ---
 from src.scripts.builders.consolidate_data import main as consolidate_data_main
 from src.scripts.builders.consolidate_rankings import main as consolidate_rankings_main

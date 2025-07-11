@@ -1,19 +1,11 @@
 # src/scripts/pipeline/simulate_bankroll_growth.py
 
-import sys
-from pathlib import Path
-import os
-
-# --- Add project root to the Python path ---
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
-
 import numpy as np
 import pandas as pd
 import argparse
+from pathlib import Path
 
 from src.scripts.utils.logger import log_info, log_success, setup_logging
-# --- MODIFIED: Import from the correct utility file ---
 from src.scripts.utils.common import normalize_columns, patch_winner_column
 
 def simulate_bankroll_growth(

@@ -2,12 +2,7 @@
 
 import pandas as pd
 from pathlib import Path
-import sys
 from tqdm import tqdm
-
-# Add project root to the Python path
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
 
 from src.scripts.utils.config import load_config
 from src.scripts.utils.logger import setup_logging, log_info, log_success
@@ -73,7 +68,6 @@ def main():
     config = load_config("config.yaml")
     paths = config['data_paths']
 
-    # --- MODIFIED: Load the consolidated match file ---
     log_info(f"Loading consolidated match data from {paths['consolidated_matches']}...")
     df_matches = pd.read_csv(paths['consolidated_matches'])
     

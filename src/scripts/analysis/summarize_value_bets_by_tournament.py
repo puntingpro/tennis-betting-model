@@ -1,11 +1,8 @@
 # src/scripts/analysis/summarize_value_bets_by_tournament.py
-import sys
+
 from pathlib import Path
 import pandas as pd
 import argparse
-
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
 
 from src.scripts.utils.file_utils import load_dataframes
 from src.scripts.utils.logger import log_error, log_success, setup_logging

@@ -7,10 +7,6 @@ import pandas as pd
 from tqdm import tqdm
 import numpy as np
 
-# Add project root to the Python path
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
-
 from src.scripts.utils.config import load_config
 from src.scripts.utils.logger import setup_logging, log_info, log_success
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema

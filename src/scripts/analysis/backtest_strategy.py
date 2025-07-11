@@ -1,20 +1,14 @@
 # src/scripts/analysis/backtest_strategy.py
 import os
-import sys
 from pathlib import Path
 import joblib
 import pandas as pd
 import argparse
 import numpy as np
 
-# --- Add project root to the Python path ---
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
-
 from src.scripts.utils.logger import log_info, log_success, setup_logging
 from src.scripts.utils.betting_math import add_ev_and_kelly
 from src.scripts.utils.config import load_config
-# --- ADDED: Import the schemas and validation function ---
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema, BacktestResultsSchema
 
 # --- Define constants for a more realistic backtest ---
@@ -28,8 +22,7 @@ def run_backtest(model_path: str, features_csv: str, output_csv: str, ev_thresho
 
     log_info(f"Loading historical features from {features_csv}...")
     df = pd.read_csv(features_csv, low_memory=False, parse_dates=['tourney_date'])
-    
-    # --- ADDED: Validate the loaded feature data ---
+
     df = validate_data(df, PlayerFeaturesSchema, "backtest_features_input")
 
     # --- Prepare Data for Prediction ---
@@ -66,12 +59,12 @@ def run_backtest(model_path: str, features_csv: str, output_csv: str, ev_thresho
     df['p2_odds'] = df['p2_odds'].clip(upper=MAX_ODDS)
 
     base_cols = ['match_id', 'tourney_name']
-    
+
     # Bets on player 1
     bets_p1 = df[base_cols + ['winner']].copy()
     bets_p1['odds'] = df['p1_odds']
     bets_p1['predicted_prob'] = df['p1_predicted_prob']
-    
+
     # Bets on player 2
     bets_p2 = df[base_cols + ['winner']].copy()
     bets_p2['odds'] = df['p2_odds']
@@ -87,8 +80,7 @@ def run_backtest(model_path: str, features_csv: str, output_csv: str, ev_thresho
     final_value_bets = pd.concat([value_bets_p1, value_bets_p2], ignore_index=True)
 
     log_success(f"Found {len(final_value_bets)} total historical value bets.")
-    
-    # --- ADDED: Validate the final backtest results DataFrame ---
+
     final_value_bets = validate_data(final_value_bets, BacktestResultsSchema, "backtest_results_output")
 
     output_path = Path(output_csv)

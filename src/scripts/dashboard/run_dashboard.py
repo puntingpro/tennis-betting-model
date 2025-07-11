@@ -4,11 +4,6 @@ import streamlit as st
 import pandas as pd
 import json
 from pathlib import Path
-import sys
-
-# Add project root to the Python path
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
 
 from src.scripts.utils.config import load_config
 

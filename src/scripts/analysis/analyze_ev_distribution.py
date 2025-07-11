@@ -1,10 +1,12 @@
+# src/scripts/analysis/analyze_ev_distribution.py
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from scripts.utils.file_utils import load_dataframes
-from scripts.utils.logger import log_error, log_info, log_success
+from src.scripts.utils.file_utils import load_dataframes
+from src.scripts.utils.logger import log_error, log_info, log_success
 
 
 def run_analyze_ev_distribution(

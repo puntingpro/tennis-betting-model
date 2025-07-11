@@ -1,12 +1,9 @@
 # src/scripts/analysis/plot_tournament_leaderboard.py
-import sys
+
 from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import argparse
-
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root))
 
 from src.scripts.utils.logger import log_error, log_success, setup_logging
 from src.scripts.utils.config import load_config
