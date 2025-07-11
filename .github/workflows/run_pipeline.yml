@@ -32,9 +32,10 @@ jobs:
         uses: 'google-github-actions/setup-gcloud@v2'
 
       - name: Download Data and Models from GCS
-        # --- MODIFIED: Corrected the source paths ---
+        # --- MODIFIED: Create the directories before copying ---
         run: |
           mkdir -p ./data/processed
+          mkdir -p ./models
           gcloud storage cp --recursive gs://puntingpro-data-lucap/processed/* ./data/processed/
           gcloud storage cp --recursive gs://puntingpro-data-lucap/models/* ./models/
         # IMPORTANT: Replace "puntingpro-data-lucap" with your actual bucket name if different
