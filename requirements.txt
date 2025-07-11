@@ -4,9 +4,10 @@ joblib
 matplotlib
 numpy
 optuna
+optuna-integration[xgboost] # --- ADDED ---
 pandas
 pandera
-python-json-logger # --- ADDED ---
+python-json-logger
 PyYAML
 requests
 schedule
