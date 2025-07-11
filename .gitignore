@@ -20,7 +20,7 @@ parsed/
 models/
 rf_model.json
 
-# ─── Logs and other generated files ─────────────────────────────────────────────
+# ─── Logs and other generated files ─────────────────────────────────────
 *.log
 *.txt
 config.yaml # Exclude configuration file
@@ -40,3 +40,6 @@ Thumbs.db
 # Backup / swap files
 *~
 *.swp
+
+# --- ADD THIS LINE ---
+!requirements.txt

@@ -1,0 +1,22 @@
+# --- Core Dependencies ---
+betfairlightweight
+joblib
+matplotlib
+numpy
+optuna
+pandas
+pandera
+PyYAML
+requests
+schedule
+scikit-learn
+seaborn
+streamlit
+xgboost
+
+# --- Development & Linting Tools ---
+black
+mypy
+pytest
+pytest-cov
+ruff
