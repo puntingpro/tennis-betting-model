@@ -13,10 +13,11 @@ def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     cert_file = os.path.join(cert_path, 'cert.pem')
     key_file = os.path.join(cert_path, 'key.pem')
 
+    # --- MODIFIED: Use .strip() to remove extra whitespace ---
     with open(cert_file, 'w') as f:
-        f.write(os.environ['BF_CERT'])
+        f.write(os.environ['BF_CERT'].strip())
     with open(key_file, 'w') as f:
-        f.write(os.environ['BF_KEY'])
+        f.write(os.environ['BF_KEY'].strip())
         
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
