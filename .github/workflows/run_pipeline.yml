@@ -32,7 +32,6 @@ jobs:
         uses: 'google-github-actions/setup-gcloud@v2'
 
       - name: Download Data and Models from GCS
-        # --- MODIFIED: Create the directories before copying ---
         run: |
           mkdir -p ./data/processed
           mkdir -p ./models
@@ -50,4 +49,5 @@ jobs:
           BF_APP_KEY: ${{ secrets.BF_APP_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -u src/scripts/pipeline/run_automation.py
+        # --- MODIFIED: Run the script as a module ---
+        run: python -u -m src.scripts.pipeline.run_automation
