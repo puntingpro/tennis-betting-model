@@ -4,7 +4,8 @@ import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame, Series
 
-class RawMatchesSchema(pa.SchemaModel):
+# --- MODIFIED: Use the more compatible pa.DataFrameModel ---
+class RawMatchesSchema(pa.DataFrameModel):
     """
     Schema for the raw consolidated match data before feature engineering.
     Ensures that essential columns are present and have the correct data type.
@@ -17,10 +18,10 @@ class RawMatchesSchema(pa.SchemaModel):
     loser_id: Series[int] = pa.Field(coerce=True)
 
     class Config:
-        strict = False  # Allows other columns to be present
-        coerce = True   # Coerces data types where possible
+        strict = False
+        coerce = True
 
-class PlayerFeaturesSchema(pa.SchemaModel):
+class PlayerFeaturesSchema(pa.DataFrameModel):
     """
     Schema for the final feature-engineered DataFrame.
     Validates the data just before it's used for model training or backtesting.
@@ -47,7 +48,7 @@ class PlayerFeaturesSchema(pa.SchemaModel):
         strict = False
         coerce = True
 
-class BacktestResultsSchema(pa.SchemaModel):
+class BacktestResultsSchema(pa.DataFrameModel):
     """
     Schema for the output of the backtest_strategy.py script.
     Ensures the results have the expected columns and data types before analysis.
@@ -61,10 +62,10 @@ class BacktestResultsSchema(pa.SchemaModel):
     kelly_fraction: Series[float] = pa.Field()
 
     class Config:
-        strict = True  # Be strict on the final output columns
+        strict = True
         coerce = True
 
-def validate_data(df: pd.DataFrame, schema: pa.SchemaModel, context: str) -> DataFrame:
+def validate_data(df: pd.DataFrame, schema: pa.DataFrameModel, context: str) -> DataFrame:
     """
     Validates a DataFrame against a pandera schema, providing a clear context on error.
     """
@@ -77,6 +78,4 @@ def validate_data(df: pd.DataFrame, schema: pa.SchemaModel, context: str) -> Dat
         print(f"❌ Schema validation failed for: {context}")
         print("Failure cases:")
         print(err.failure_cases)
-        # Optionally, you might want to save the failing data for inspection
-        # err.failure_cases.to_csv(f"data/analysis/schema_failures_{context}.csv")
         raise
