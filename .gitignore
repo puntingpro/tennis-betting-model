@@ -44,3 +44,5 @@ Thumbs.db
 # --- ADD THIS LINE ---
 !requirements.txtcerts/
 certs/
+gha-betfair.crt
+gha-betfair.key
