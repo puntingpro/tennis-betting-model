@@ -33,11 +33,11 @@ jobs:
 
       - name: Download Data and Models from GCS
         run: |
-          mkdir -p ./data/processed
-          mkdir -p ./models
+          mkdir -p ./data/processed ./models ./data/raw/tennis_atp ./data/raw/tennis_wta
           gcloud storage cp --recursive gs://puntingpro-data-lucap/processed/* ./data/processed/
           gcloud storage cp --recursive gs://puntingpro-data-lucap/models/* ./models/
-        # IMPORTANT: Replace "puntingpro-data-lucap" with your actual bucket name if different
+          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp/
+          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta/
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -49,5 +49,4 @@ jobs:
           BF_APP_KEY: ${{ secrets.BF_APP_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        # --- MODIFIED: Run the script as a module ---
         run: python -u main.py automate
