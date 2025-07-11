@@ -33,11 +33,11 @@ jobs:
 
       - name: Download Data and Models from GCS
         run: |
-          mkdir -p ./data/processed ./models ./data/raw/tennis_atp ./data/raw/tennis_wta
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/processed/* ./data/processed/
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/models/* ./models/
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp/
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta/
+          mkdir -p ./data/processed ./models ./data/tennis_atp ./data/tennis_wta
+          gcloud storage cp --recursive gs://puntingpro-data-lucap/processed/* ./data/processed
+          gcloud storage cp --recursive gs://puntingpro-data-lucap/models/* ./models
+          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp
+          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta
 
       - name: Install dependencies
         run: pip install -r requirements.txt
