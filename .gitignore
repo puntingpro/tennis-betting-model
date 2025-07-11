@@ -42,4 +42,5 @@ Thumbs.db
 *.swp
 
 # --- ADD THIS LINE ---
-!requirements.txt
+!requirements.txtcerts/
+certs/
