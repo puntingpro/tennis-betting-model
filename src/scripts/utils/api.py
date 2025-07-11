@@ -9,16 +9,15 @@ def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     """Logs in to the Betfair API using a non-interactive certificate login."""
     cert_path = os.getenv('BF_CERT_PATH', 'certs')
     os.makedirs(cert_path, exist_ok=True)
-    
+
     cert_file = os.path.join(cert_path, 'cert.pem')
     key_file = os.path.join(cert_path, 'key.pem')
 
-    # --- MODIFIED: Use .strip() to remove extra whitespace ---
     with open(cert_file, 'w') as f:
         f.write(os.environ['BF_CERT'].strip())
     with open(key_file, 'w') as f:
         f.write(os.environ['BF_KEY'].strip())
-        
+
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
