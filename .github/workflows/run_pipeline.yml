@@ -2,9 +2,8 @@ name: Run PuntingPro Full Pipeline
 
 on:
   schedule:
-    # Runs every 15 minutes
     - cron: '*/15 * * * *'
-  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
   run-live-pipeline:
@@ -47,6 +46,8 @@ jobs:
           BF_USER: ${{ secrets.BF_USER }}
           BF_PASS: ${{ secrets.BF_PASS }}
           BF_APP_KEY: ${{ secrets.BF_APP_KEY }}
+          BF_CERT: ${{ secrets.BF_CERT }}
+          BF_KEY: ${{ secrets.BF_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -u main.py automate

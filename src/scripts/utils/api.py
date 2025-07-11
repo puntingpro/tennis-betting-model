@@ -3,16 +3,28 @@ import os
 import betfairlightweight
 from betfairlightweight.exceptions import APIError
 from typing import List, Tuple
-from .logger import log_info, log_warning # --- MODIFIED: Added log_warning
+from .logger import log_info, log_warning
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
-    """Logs in to the Betfair API."""
+    """Logs in to the Betfair API using a non-interactive certificate login."""
+    cert_path = os.getenv('BF_CERT_PATH', 'certs')
+    os.makedirs(cert_path, exist_ok=True)
+    
+    cert_file = os.path.join(cert_path, 'cert.pem')
+    key_file = os.path.join(cert_path, 'key.pem')
+
+    with open(cert_file, 'w') as f:
+        f.write(os.environ['BF_CERT'])
+    with open(key_file, 'w') as f:
+        f.write(os.environ['BF_KEY'])
+        
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
-        app_key=os.getenv('BF_APP_KEY')
+        app_key=os.getenv('BF_APP_KEY'),
+        certs=cert_path
     )
-    trading.login_interactive()
+    trading.login()
     return trading
 
 def get_tennis_competitions(trading: betfairlightweight.APIClient, target_keywords: List[str]) -> List[str]:
@@ -37,15 +49,12 @@ def get_live_match_odds(trading: betfairlightweight.APIClient, competition_ids: 
             market_projection=['EVENT', 'RUNNER_METADATA', 'COMPETITION', 'DESCRIPTION']
         )
     except APIError as e:
-        # --- MODIFIED: More robust error handling ---
         error_string = str(e)
         if "DSC-0018" in error_string or "NO_MARKETS" in error_string:
             log_info("No active match odds markets found for the targeted competitions at this time.")
         else:
             log_warning(f"An unexpected Betfair API error occurred: {error_string}")
-        # In either case, return empty lists to prevent a crash
         return [], {}
-        # --- END MODIFICATION ---
 
     market_ids = [market.market_id for market in market_catalogues]
     if not market_ids:
