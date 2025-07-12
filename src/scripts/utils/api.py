@@ -42,7 +42,7 @@ def get_live_match_odds(trading: betfairlightweight.APIClient, competition_ids: 
         if "DSC-0018" in error_string or "NO_MARKETS" in error_string:
             log_info("No active match odds markets found for the targeted competitions at this time.")
         else:
-            log_warning(f"An unexpected Betfair API error occurred: {error_string}")
+            log_warning(f"An unexpected Betfair API error occurred: {e}")
         return [], {}
 
     market_ids = [market.market_id for market in market_catalogues]
