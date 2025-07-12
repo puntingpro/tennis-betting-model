@@ -1,5 +1,6 @@
 # src/scripts/utils/api.py
 import os
+import requests # Import the requests library
 import betfairlightweight
 from betfairlightweight.exceptions import APIError
 from typing import List, Tuple
@@ -8,25 +9,30 @@ from .logger import log_info, log_warning
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     """Logs in to the Betfair API using provided credentials, certs, and proxy."""
     
+    # Create a requests session object
+    session = requests.Session()
+
     # Get proxy URL from environment variables
     proxy_url = os.getenv('PROXY_URL')
-    proxies = {
-        "http": proxy_url,
-        "https": proxy_url,
-    } if proxy_url else None
-
-    if proxies:
+    if proxy_url:
         log_info(f"Connecting via proxy...")
-    
+        proxies = {
+            "http": proxy_url,
+            "https": proxy_url,
+        }
+        # Set the proxy on the session object
+        session.proxies.update(proxies)
+
+    # Initialize the API client, passing the configured session
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
         app_key=os.getenv('BF_APP_KEY'),
         certs='certs/',
-        proxies=proxies  # Add the proxies dictionary here
+        session=session  # Pass the session object here
     )
     
-    # The login call will now be routed through your proxy
+    # The login call will now be routed through the session's proxy
     trading.login()
     return trading
 
