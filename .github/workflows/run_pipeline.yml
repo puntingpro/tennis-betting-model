@@ -47,8 +47,95 @@ jobs:
           BF_USER: ${{ secrets.BF_USER }}
           BF_PASS: ${{ secrets.BF_PASS }}
           BF_APP_KEY: ${{ secrets.BF_APP_KEY }}
-          BF_CERT: ${{ secrets.BF_CERT }}
-          BF_KEY: ${{ secrets.BF_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BF_CERT: |
+            -----BEGIN CERTIFICATE-----
+            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
+            D6x8rDQzHg==
+            -----END CERTIFICATE-----
+          BF_KEY: |
+            -----BEGIN PRIVATE KEY-----
+            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
+            Lxb9TUHCXyAzFmiquptvfi004vV4CY9c
+            -----END PRIVATE KEY-----
         run: python -u main.py automate
