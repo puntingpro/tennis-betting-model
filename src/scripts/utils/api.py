@@ -6,14 +6,27 @@ from typing import List, Tuple
 from .logger import log_info, log_warning
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
-    """Logs in to the Betfair API using provided credentials and certs."""
+    """Logs in to the Betfair API using provided credentials, certs, and proxy."""
+    
+    # Get proxy URL from environment variables
+    proxy_url = os.getenv('PROXY_URL')
+    proxies = {
+        "http": proxy_url,
+        "https": proxy_url,
+    } if proxy_url else None
+
+    if proxies:
+        log_info(f"Connecting via proxy...")
+    
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
         app_key=os.getenv('BF_APP_KEY'),
-        certs='certs/'  # Point to the directory containing the certs
+        certs='certs/',
+        proxies=proxies  # Add the proxies dictionary here
     )
-    # The login call will now use the certs found in the 'certs/' directory
+    
+    # The login call will now be routed through your proxy
     trading.login()
     return trading
 
