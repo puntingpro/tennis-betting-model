@@ -1,6 +1,6 @@
 # src/scripts/utils/api.py
 import os
-import requests # Import the requests library
+import requests
 import betfairlightweight
 from betfairlightweight.exceptions import APIError
 from typing import List, Tuple
@@ -9,30 +9,34 @@ from .logger import log_info, log_warning
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     """Logs in to the Betfair API using provided credentials, certs, and proxy."""
     
-    # Create a requests session object
     session = requests.Session()
-
-    # Get proxy URL from environment variables
     proxy_url = os.getenv('PROXY_URL')
+    
+    # Path to the Bright Data certificate file created in the workflow
+    brightdata_cert_path = 'brightdata_ca.crt'
+
     if proxy_url:
         log_info(f"Connecting via proxy...")
         proxies = {
             "http": proxy_url,
             "https": proxy_url,
         }
-        # Set the proxy on the session object
         session.proxies.update(proxies)
+        
+        # Set the verify parameter to the path of the certificate bundle
+        if os.path.exists(brightdata_cert_path):
+            session.verify = brightdata_cert_path
+        else:
+            log_warning("Bright Data certificate not found. Proxy connection may fail.")
 
-    # Initialize the API client, passing the configured session
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
         app_key=os.getenv('BF_APP_KEY'),
         certs='certs/',
-        session=session  # Pass the session object here
+        session=session
     )
     
-    # The login call will now be routed through the session's proxy
     trading.login()
     return trading
 
