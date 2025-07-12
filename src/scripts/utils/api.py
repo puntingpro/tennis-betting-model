@@ -6,29 +6,14 @@ from typing import List, Tuple
 from .logger import log_info, log_warning
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
-    """Logs in to the Betfair API using a non-interactive certificate login."""
-    # Define the path for the certs directory
-    cert_path = 'certs'
-    os.makedirs(cert_path, exist_ok=True)
-    
-    # Define file paths for the certificate and key
-    cert_file = os.path.join(cert_path, 'cert.pem')
-    key_file = os.path.join(cert_path, 'key.pem')
-
-    # Write the certificate and key from environment variables to the files
-    with open(cert_file, 'w') as f:
-        f.write(os.environ['BF_CERT'])
-    with open(key_file, 'w') as f:
-        f.write(os.environ['BF_KEY'])
-        
-    # Initialize the API client using the directory containing the certs
+    """Logs in to the Betfair API using a non-interactive (no certs) login."""
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
         app_key=os.getenv('BF_APP_KEY'),
-        certs=cert_path
     )
-    trading.login()
+    # The 'force=True' argument is essential for non-interactive login
+    trading.login(force=True)
     return trading
 
 def get_tennis_competitions(trading: betfairlightweight.APIClient, target_keywords: List[str]) -> List[str]:
