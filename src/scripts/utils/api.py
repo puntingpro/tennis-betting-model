@@ -12,8 +12,8 @@ def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
         password=os.getenv('BF_PASS'),
         app_key=os.getenv('BF_APP_KEY'),
     )
-    # The 'force=True' argument is essential for non-interactive login
-    trading.login(force=True)
+    # A non-interactive login is attempted automatically when no certs are provided.
+    trading.login()
     return trading
 
 def get_tennis_competitions(trading: betfairlightweight.APIClient, target_keywords: List[str]) -> List[str]:
@@ -42,7 +42,7 @@ def get_live_match_odds(trading: betfairlightweight.APIClient, competition_ids: 
         if "DSC-0018" in error_string or "NO_MARKETS" in error_string:
             log_info("No active match odds markets found for the targeted competitions at this time.")
         else:
-            log_warning(f"An unexpected Betfair API error occurred: {error_string}")
+            log_warning(f"An unexpected Betfair API error occurred: {e}")
         return [], {}
 
     market_ids = [market.market_id for market in market_catalogues]
