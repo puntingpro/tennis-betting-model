@@ -6,13 +6,14 @@ from typing import List, Tuple
 from .logger import log_info, log_warning
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
-    """Logs in to the Betfair API using a non-interactive (no certs) login."""
+    """Logs in to the Betfair API using provided credentials and certs."""
     trading = betfairlightweight.APIClient(
         username=os.getenv('BF_USER'),
         password=os.getenv('BF_PASS'),
         app_key=os.getenv('BF_APP_KEY'),
+        certs='certs/'  # Point to the directory containing the certs
     )
-    # A non-interactive login is attempted automatically when no certs are provided.
+    # The login call will now use the certs found in the 'certs/' directory
     trading.login()
     return trading
 

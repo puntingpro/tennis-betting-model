@@ -41,8 +41,9 @@ Thumbs.db
 *~
 *.swp
 
-# --- ADD THIS LINE ---
-!requirements.txtcerts/
+# --- CORRECTED LINES ---
+# This ensures requirements.txt is NOT ignored, but the certs directory IS.
+!requirements.txt
 certs/
 gha-betfair.crt
 gha-betfair.key

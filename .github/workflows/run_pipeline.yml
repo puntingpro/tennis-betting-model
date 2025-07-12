@@ -39,6 +39,14 @@ jobs:
           gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp
           gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta
 
+      # This new step creates the certs directory and writes the secrets to files
+      # The API client in api.py will look for this directory.
+      - name: Create Betfair Certs
+        run: |
+          mkdir -p certs
+          echo "${{ secrets.BF_GHA_CERT }}" > certs/betfair.crt
+          echo "${{ secrets.BF_GHA_KEY }}" > certs/betfair.key
+
       - name: Install dependencies
         run: pip install -r requirements.txt
       
