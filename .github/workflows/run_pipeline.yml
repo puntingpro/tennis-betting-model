@@ -39,15 +39,13 @@ jobs:
           gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp
           gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta
 
-      - name: Create Betfair and Bright Data Certs
+      - name: Create Betfair Certs
         run: |
-          # Create Betfair certs for API client
+          # This step only creates the Betfair certs now.
+          # The Bright Data cert is not needed for IPRoyal.
           mkdir -p certs
           echo "${{ secrets.BF_GHA_CERT }}" > certs/betfair.crt
           echo "${{ secrets.BF_GHA_KEY }}" > certs/betfair.key
-          
-          # Create Bright Data cert for proxy verification
-          echo "${{ secrets.BRIGHTDATA_CERT }}" > brightdata_ca.crt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
