@@ -1,9 +1,11 @@
 import subprocess
 
-
 def get_git_hash() -> str:
     """
-    Returns the current git commit hash.
+    Retrieves the current git commit hash of the repository.
+
+    Returns:
+        str: The full git commit hash as a string, or 'unknown' if it cannot be retrieved.
     """
     try:
         return (
@@ -11,5 +13,5 @@ def get_git_hash() -> str:
             .decode("ascii")
             .strip()
         )
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return "unknown"

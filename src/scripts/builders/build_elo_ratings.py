@@ -6,10 +6,7 @@ from tqdm import tqdm
 
 from src.scripts.utils.config import load_config
 from src.scripts.utils.logger import setup_logging, log_info, log_success
-
-# Constants for the Elo calculation
-K_FACTOR = 32
-INITIAL_RATING = 1500
+from src.scripts.utils.constants import ELO_K_FACTOR, ELO_INITIAL_RATING
 
 def calculate_expected_score(rating1, rating2):
     """Calculates the expected score of player 1 against player 2."""
@@ -19,8 +16,8 @@ def update_elo(winner_rating, loser_rating):
     """Updates the Elo ratings for a winner and a loser."""
     expected_win = calculate_expected_score(winner_rating, loser_rating)
     
-    new_winner_rating = winner_rating + K_FACTOR * (1 - expected_win)
-    new_loser_rating = loser_rating + K_FACTOR * (0 - (1 - expected_win))
+    new_winner_rating = winner_rating + ELO_K_FACTOR * (1 - expected_win)
+    new_loser_rating = loser_rating + ELO_K_FACTOR * (0 - (1 - expected_win))
     
     return new_winner_rating, new_loser_rating
 
@@ -41,8 +38,8 @@ def generate_elo_ratings(df: pd.DataFrame) -> pd.DataFrame:
         loser_id = row.loser_id
 
         # Get the current ratings, defaulting to the initial rating if a player is new
-        winner_elo = elo_ratings.get(winner_id, INITIAL_RATING)
-        loser_elo = elo_ratings.get(loser_id, INITIAL_RATING)
+        winner_elo = elo_ratings.get(winner_id, ELO_INITIAL_RATING)
+        loser_elo = elo_ratings.get(loser_id, ELO_INITIAL_RATING)
 
         # Store the ratings *before* the match
         elo_history.append({

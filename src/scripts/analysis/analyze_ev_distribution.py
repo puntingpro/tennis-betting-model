@@ -4,16 +4,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import argparse
+from pathlib import Path
 
 from src.scripts.utils.file_utils import load_dataframes
-from src.scripts.utils.logger import log_error, log_info, log_success
-
+from src.scripts.utils.logger import log_error, log_info, log_success, setup_logging
 
 def run_analyze_ev_distribution(
     df: pd.DataFrame, ev_threshold: float, max_odds: float
 ) -> pd.DataFrame:
     """
     Analyzes and filters value bets based on EV and odds thresholds.
+
+    Args:
+        df (pd.DataFrame): DataFrame of all identified value bets.
+        ev_threshold (float): The minimum Expected Value to be included.
+        max_odds (float): The maximum odds to be included.
+
+    Returns:
+        pd.DataFrame: A filtered DataFrame containing only bets that meet the criteria.
     """
     df_filtered = df[
         (df["expected_value"] > ev_threshold) & (df["odds"] < max_odds)
@@ -24,9 +33,16 @@ def run_analyze_ev_distribution(
     return df_filtered
 
 
-def plot_ev_distribution(df: pd.DataFrame, ev_threshold: float):
+def plot_ev_distribution(df: pd.DataFrame, ev_threshold: float) -> plt.Figure:
     """
-    Generates a plot showing the distribution of Expected Value.
+    Generates and returns a plot showing the distribution of Expected Value.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing expected_value data.
+        ev_threshold (float): The EV threshold to display as a vertical line.
+
+    Returns:
+        plt.Figure: The matplotlib Figure object for the generated plot.
     """
     plt.style.use("seaborn-v0_8-whitegrid")
     fig, ax = plt.subplots(figsize=(12, 7))
@@ -45,11 +61,23 @@ def plot_ev_distribution(df: pd.DataFrame, ev_threshold: float):
     return fig
 
 
-def main_cli(args):
+def main_cli() -> None:
     """
-    Main CLI handler for analyzing EV distribution.
-    Accepts args object from main.py.
+    Main CLI handler for analyzing the distribution of Expected Value in bet results.
     """
+    setup_logging()
+    parser = argparse.ArgumentParser(
+        description="Analyze and visualize the distribution of Expected Value from backtest results."
+    )
+    parser.add_argument("value_bets_glob", help="Glob pattern for the input CSV files containing value bets.")
+    parser.add_argument("--output-csv", type=str, help="Optional: Path to save the filtered DataFrame as a CSV.")
+    parser.add_argument("--ev-threshold", type=float, default=0.1, help="The minimum EV to filter bets by.")
+    parser.add_argument("--max-odds", type=float, default=10.0, help="The maximum odds to filter bets by.")
+    parser.add_argument("--plot", action="store_true", help="If set, display the EV distribution plot.")
+    parser.add_argument("--save-plot", action="store_true", help="If set, save the EV distribution plot to 'data/plots/'.")
+    
+    args = parser.parse_args()
+
     try:
         df = load_dataframes(args.value_bets_glob)
         filtered_df = run_analyze_ev_distribution(
@@ -60,6 +88,7 @@ def main_cli(args):
             log_info("No bets met the specified EV and odds criteria.")
             return
 
+        # Calculate ROI for the filtered bets
         roi = (
             (filtered_df["odds"] - 1).where(filtered_df["is_correct"], -1).sum()
             / len(filtered_df)
@@ -71,7 +100,8 @@ def main_cli(args):
         if args.plot or args.save_plot:
             fig = plot_ev_distribution(df, args.ev_threshold)
             if args.save_plot:
-                output_path = "data/plots/ev_distribution.png"
+                output_path = Path("data/plots/ev_distribution.png")
+                output_path.parent.mkdir(parents=True, exist_ok=True)
                 fig.savefig(output_path, dpi=300)
                 log_success(f"Saved plot to {output_path}")
             if args.plot:
@@ -85,3 +115,6 @@ def main_cli(args):
         log_error(f"Error loading files: {e}")
     except Exception as e:
         log_error(f"An unexpected error occurred: {e}")
+
+if __name__ == "__main__":
+    main_cli()

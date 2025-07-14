@@ -2,6 +2,7 @@
 
 import pandas as pd
 import pytest
+from xgboost import XGBClassifier
 
 # --- MODIFIED: Import the correct function ---
 from src.scripts.modeling.train_eval_model import train_advanced_model
@@ -23,25 +24,34 @@ def sample_feature_data() -> pd.DataFrame:
     }
     # Add other columns expected by the training function with default values
     df = pd.DataFrame(data)
-    for col in ['tourney_date', 'tourney_name', 'surface']:
-        df[col] = ''
+    # Add all other required columns with default values to satisfy schema validation
+    required_cols = {
+        'tourney_date': pd.to_datetime('2023-01-01'), 'tourney_name': 'Test Open', 'surface': 'Hard',
+        'p1_elo': 1500, 'p2_elo': 1500, 'elo_diff': 0, 'h2h_p1_wins': 0, 'h2h_p2_wins': 0,
+        'p1_win_perc': 0.5, 'p2_win_perc': 0.5, 'p1_surface_win_perc': 0.5, 'p2_surface_win_perc': 0.5,
+        'p1_form_last_10': 0.5, 'p2_form_last_10': 0.5, 'p1_height': 180, 'p2_height': 180
+    }
+    for col, val in required_cols.items():
+        df[col] = val
+        
     return df
 
 
-# --- MODIFIED: Update the test to use the correct function and parameters ---
+# --- MODIFIED: Update the test to match the new return signature ---
 def test_train_advanced_model(sample_feature_data):
     """
-    Tests the advanced model training function.
+    Tests the advanced model training function to ensure it returns the
+    correct types and that the metadata is structured as expected.
     """
-    model, report, auc, meta = train_advanced_model(
+    model, auc, meta = train_advanced_model(
         df=sample_feature_data,
-        test_size=0.5,
         random_state=42,
         n_trials=2  # Use a small number of trials for a quick test
     )
     
-    assert model is not None
-    assert isinstance(report, str)
-    assert auc is not None and 0.0 <= auc <= 1.0
+    assert isinstance(model, XGBClassifier)
+    assert isinstance(auc, float) and 0.0 <= auc <= 1.0
+    assert isinstance(meta, dict)
     assert meta["model_type"] == "XGBClassifier"
-    assert meta["algorithm"] == "xgb"
+    assert "features" in meta
+    assert "cross_val_auc" in meta

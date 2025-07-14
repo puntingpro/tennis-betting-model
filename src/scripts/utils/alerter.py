@@ -4,8 +4,15 @@ import os
 import requests
 from .logger import log_success, log_warning
 
-def send_telegram_message(bot_token: str, chat_id: str, message: str):
-    """Sends a message to a specified Telegram chat."""
+def send_telegram_message(bot_token: str, chat_id: str, message: str) -> None:
+    """
+    Sends a formatted message to a specified Telegram chat.
+
+    Args:
+        bot_token (str): The token for the Telegram bot.
+        chat_id (str): The ID of the Telegram chat to send the message to.
+        message (str): The message content to send.
+    """
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
         'chat_id': chat_id,
@@ -19,10 +26,12 @@ def send_telegram_message(bot_token: str, chat_id: str, message: str):
     except requests.exceptions.RequestException as e:
         log_warning(f"⚠️ Failed to send Telegram alert: {e}")
 
-def send_alert(message: str):
+def send_alert(message: str) -> None:
     """
-    Sends an alert with the given message.
-    Logs to console and sends a Telegram message if configured.
+    Sends an alert with the given message to the console and Telegram (if configured).
+
+    Args:
+        message (str): The alert message to be sent.
     """
     # --- Console Alert ---
     print("\n" + "="*50)

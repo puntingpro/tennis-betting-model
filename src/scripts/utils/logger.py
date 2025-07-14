@@ -25,17 +25,17 @@ def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
 
 # --- Reusable Logging Functions ---
 
-def log_info(msg: str, *args: object) -> None:
-    logging.info(msg, *args)
+def log_info(msg: str) -> None:
+    logging.info(msg)
 
 
-def log_warning(msg: str, *args: object) -> None:
-    logging.warning(f"⚠️ {msg}", *args)
+def log_warning(msg: str) -> None:
+    logging.warning(f"⚠️ {msg}")
 
 
-def log_error(msg: str, *args: object) -> None:
-    logging.error(f"❌ {msg}", *args)
+def log_error(msg: str) -> None:
+    logging.error(f"❌ {msg}")
 
 
-def log_success(msg: str, *args: object) -> None:
-    logging.info(f"✅ {msg}", *args)
+def log_success(msg: str) -> None:
+    logging.info(f"✅ {msg}")

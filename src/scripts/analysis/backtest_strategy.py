@@ -10,10 +10,7 @@ from src.scripts.utils.logger import log_info, log_success, setup_logging
 from src.scripts.utils.betting_math import add_ev_and_kelly
 from src.scripts.utils.config import load_config
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema, BacktestResultsSchema
-
-# --- Define constants for a more realistic backtest ---
-MAX_ODDS = 50.0
-BOOKMAKER_MARGIN = 1.05 # Represents a 5% margin
+from src.scripts.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
 
 def run_backtest(model_path: str, features_csv: str, output_csv: str, ev_threshold: float):
     log_info(f"Loading model from {model_path}...")
@@ -53,10 +50,10 @@ def run_backtest(model_path: str, features_csv: str, output_csv: str, ev_thresho
     df['p1_true_prob'] = np.where(total_perc > 0, df['p1_win_perc'] / total_perc, 0.5)
     df['p2_true_prob'] = np.where(total_perc > 0, df['p2_win_perc'] / total_perc, 0.5)
 
-    df['p1_odds'] = np.where(df['p1_true_prob'] > 0, (1 / df['p1_true_prob']) / BOOKMAKER_MARGIN, MAX_ODDS)
-    df['p1_odds'] = df['p1_odds'].clip(upper=MAX_ODDS)
-    df['p2_odds'] = np.where(df['p2_true_prob'] > 0, (1 / df['p2_true_prob']) / BOOKMAKER_MARGIN, MAX_ODDS)
-    df['p2_odds'] = df['p2_odds'].clip(upper=MAX_ODDS)
+    df['p1_odds'] = np.where(df['p1_true_prob'] > 0, (1 / df['p1_true_prob']) / BOOKMAKER_MARGIN, BACKTEST_MAX_ODDS)
+    df['p1_odds'] = df['p1_odds'].clip(upper=BACKTEST_MAX_ODDS)
+    df['p2_odds'] = np.where(df['p2_true_prob'] > 0, (1 / df['p2_true_prob']) / BOOKMAKER_MARGIN, BACKTEST_MAX_ODDS)
+    df['p2_odds'] = df['p2_odds'].clip(upper=BACKTEST_MAX_ODDS)
 
     base_cols = ['match_id', 'tourney_name']
 
@@ -83,6 +80,7 @@ def run_backtest(model_path: str, features_csv: str, output_csv: str, ev_thresho
 
     final_value_bets = validate_data(final_value_bets, BacktestResultsSchema, "backtest_results_output")
 
+    # --- MODIFIED: Use pathlib for robust path creation ---
     output_path = Path(output_csv)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     final_value_bets.to_csv(output_path, index=False)

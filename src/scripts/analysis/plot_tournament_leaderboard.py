@@ -29,20 +29,23 @@ def main_cli(args):
     Main function for plotting the leaderboard, driven by the config file.
     """
     setup_logging()
-    # While this specific script doesn't use CLI args beyond the config,
-    # it's good practice to load it for consistency and future expansion.
     config = load_config(args.config)
     paths = config['data_paths']
 
     try:
-        df = pd.read_csv(paths['tournament_summary'])
+        input_path = Path(paths['tournament_summary'])
+        df = pd.read_csv(input_path)
+        
         # Default values from the old parser can be hardcoded or moved to config
         fig = run_plot_leaderboard(df, sort_by="roi", top_n=25)
         
-        # Saving and showing the plot
-        output_path_str = paths.get('plot_dir', 'data/plots/') + 'tournament_leaderboard.png'
-        output_path = Path(output_path_str)
+        # --- MODIFIED: Use pathlib for robust path creation ---
+        plot_dir = Path(paths.get('plot_dir', 'data/plots/'))
+        output_path = plot_dir / 'tournament_leaderboard.png'
+        
+        # Create the parent directory if it doesn't exist
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        
         fig.savefig(output_path, dpi=300)
         log_success(f"Saved leaderboard plot to {output_path}")
         

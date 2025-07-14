@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import MagicMock
 
 # Import the new, testable function directly
-from src.scripts.pipeline.run_pipeline import process_markets
+from src.scripts.pipeline.value_finder import process_markets
 
 def test_process_markets_identifies_value_bet():
     """
@@ -17,7 +17,14 @@ def test_process_markets_identifies_value_bet():
     # Mock the ML model
     mock_model = MagicMock()
     mock_model.predict_proba.return_value = [[0.4, 0.6]] # Predicts 60% win prob for Player 1
-    mock_model.feature_names_in_ = ['p1_rank', 'p2_rank', 'rank_diff', 'p1_height', 'p2_height', 'h2h_p1_wins', 'h2h_p2_wins', 'h2h_win_perc_p1', 'p1_win_perc', 'p2_win_perc', 'p1_surface_win_perc', 'p2_surface_win_perc', 'p1_hand_L', 'p1_hand_R', 'p1_hand_U', 'p2_hand_L', 'p2_hand_R', 'p2_hand_U']
+    
+    # --- MODIFIED: Use a more accurate list of feature names ---
+    mock_model.feature_names_in_ = [
+        'p1_rank', 'p2_rank', 'rank_diff', 'p1_height', 'p2_height', 'h2h_p1_wins', 
+        'h2h_p2_wins', 'h2h_win_perc_p1', 'p1_win_perc', 'p2_win_perc', 
+        'p1_surface_win_perc', 'p2_surface_win_perc', 'p1_hand_L', 'p1_hand_R', 
+        'p1_hand_U', 'p2_hand_L', 'p2_hand_R', 'p2_hand_U'
+    ]
 
     # Mock the market and book data from the API
     mock_market = MagicMock()
@@ -41,12 +48,12 @@ def test_process_markets_identifies_value_bet():
         102: {'hand': 'L', 'height': 185.0}
     }
     mock_df_rankings = pd.DataFrame({
-        'ranking_date': pd.to_datetime(['2023-01-01', '2023-01-01'], utc=True),
+        'ranking_date': pd.to_datetime(['2023-01-01'], utc=True),
         'player': [101, 102],
         'rank': [10.0, 25.0]
     }).sort_values(by='ranking_date')
     
-    # --- ADDED: Mock historical matches DataFrame for the new argument ---
+    # Mock historical matches DataFrame for the new argument
     mock_df_matches = pd.DataFrame({
         'tourney_date': pd.to_datetime(['2022-01-01'], utc=True),
         'surface': ['Hard'],
@@ -63,7 +70,6 @@ def test_process_markets_identifies_value_bet():
         market_book_lookup={"1.2345": mock_book},
         player_info_lookup=mock_player_info_lookup,
         df_rankings=mock_df_rankings,
-        # --- ADDED: Pass the new mock DataFrame ---
         df_matches=mock_df_matches,
         betting_config=mock_betting_config
     )
@@ -74,5 +80,5 @@ def test_process_markets_identifies_value_bet():
     value_bet = result[0]
     assert value_bet['player_name'] == "Player A"
     assert value_bet['odds'] == 2.0
-    # EV = (0.60 * 2.0) - 1.0 = 0.20 -> +20.00%
+    # EV = (0.60 * (2.0 - 1)) - (1 - 0.60) = 0.60 - 0.40 = 0.20 -> +20.00%
     assert value_bet['EV'] == "+20.00%"

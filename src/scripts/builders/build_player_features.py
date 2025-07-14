@@ -10,6 +10,7 @@ import numpy as np
 from src.scripts.utils.config import load_config
 from src.scripts.utils.logger import setup_logging, log_info, log_success
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
+from src.scripts.utils.constants import DEFAULT_PLAYER_RANK
 
 # --- UNCHANGED FUNCTIONS ---
 def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
@@ -131,9 +132,8 @@ def main(args):
     features_df = pd.merge(features_df, p1_ranks, on='match_id', how='left')
     features_df = pd.merge(features_df, p2_ranks, on='match_id', how='left')
     
-    DEFAULT_RANK = 500
-    features_df['p1_rank'].fillna(DEFAULT_RANK, inplace=True)
-    features_df['p2_rank'].fillna(DEFAULT_RANK, inplace=True)
+    features_df['p1_rank'].fillna(DEFAULT_PLAYER_RANK, inplace=True)
+    features_df['p2_rank'].fillna(DEFAULT_PLAYER_RANK, inplace=True)
     
     features_df['rank_diff'] = features_df['p1_rank'] - features_df['p2_rank']
     features_df['elo_diff'] = features_df['p1_elo'] - features_df['p2_elo']

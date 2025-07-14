@@ -27,37 +27,39 @@ def consolidate_main(args):
 def main():
     """Main CLI entrypoint for the Tennis Value Betting Pipeline."""
     parser = argparse.ArgumentParser(
-        description="A comprehensive toolkit for tennis value betting analysis.",
+        description="A comprehensive toolkit for tennis value betting analysis. This CLI allows you to build features, train models, run backtests, and launch a live value-finding pipeline.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
-    parser.add_argument("--config", default="config.yaml", help="Path to the config file.")
+    parser.add_argument("--verbose", action="store_true", help="Enable detailed, verbose logging across all modules.")
+    parser.add_argument("--config", default="config.yaml", help="Path to the primary YAML configuration file. Defaults to 'config.yaml'.")
     subparsers = parser.add_subparsers(dest="command", required=True, help="Available commands")
 
     # --- CLI Commands ---
-    p_consolidate = subparsers.add_parser("consolidate", help="Consolidate all raw data files.")
+    p_consolidate = subparsers.add_parser("consolidate", help="Combines raw CSV data for matches and rankings into single, processed files.")
     p_consolidate.set_defaults(func=consolidate_main)
 
-    p_build = subparsers.add_parser("build", help="Build advanced player features from raw data.")
+    p_build = subparsers.add_parser("build", help="Generates the main feature set from consolidated data, including Elo ratings and player stats.")
     p_build.set_defaults(func=build_features_main)
     
-    p_model = subparsers.add_parser("model", help="Train and evaluate models using features.")
+    p_model = subparsers.add_parser("model", help="Trains and evaluates the XGBoost model using the generated features and saves the final model artifact.")
     p_model.set_defaults(func=train_model_main)
     
-    p_backtest = subparsers.add_parser("backtest", help="Run a historical backtest.")
+    p_backtest = subparsers.add_parser("backtest", help="Runs a historical backtest using the trained model to simulate betting strategy and generate results.")
     p_backtest.set_defaults(func=backtest_main)
 
-    p_analysis = subparsers.add_parser("analysis", help="Run analysis on backtest results")
+    p_analysis = subparsers.add_parser("analysis", help="Tools for analyzing and visualizing backtest results.")
     analysis_subparsers = p_analysis.add_subparsers(dest="analysis_command", required=True)
-    p_summarize_tourneys = analysis_subparsers.add_parser("summarize-tournaments", help="Summarize results by tournament.")
+    
+    p_summarize_tourneys = analysis_subparsers.add_parser("summarize-tournaments", help="Summarizes backtest results by tournament, calculating profit and ROI.")
     p_summarize_tourneys.set_defaults(func=summarize_tournaments_main)
-    p_plot = analysis_subparsers.add_parser("plot-leaderboard", help="Plot tournament leaderboard.")
+    
+    p_plot = analysis_subparsers.add_parser("plot-leaderboard", help="Generates and displays a plot of the most profitable tournaments from the backtest.")
     p_plot.set_defaults(func=plot_leaderboard_main)
     
-    p_dashboard = subparsers.add_parser("dashboard", help="Launch the project dashboard.")
+    p_dashboard = subparsers.add_parser("dashboard", help="Launches a Streamlit dashboard to visualize model performance and backtest results.")
     p_dashboard.set_defaults(func=lambda args: dashboard_main())
     
-    p_automate = subparsers.add_parser("automate", help="Run the pipeline on an automated schedule.")
+    p_automate = subparsers.add_parser("automate", help="Starts the live, automated pipeline which runs every 15 minutes to find and alert on value bets.")
     p_automate.set_defaults(func=automation_main)
 
 

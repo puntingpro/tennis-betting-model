@@ -2,24 +2,26 @@
 
 import pandas as pd
 from decimal import Decimal
-from src.scripts.utils.logger import log_info
+from src.scripts.utils.logger import log_info, log_success
 from src.scripts.utils.common import get_most_recent_ranking
 from src.scripts.pipeline.feature_engineering import get_h2h_stats, get_player_form_and_win_perc
-from src.scripts.utils.alerter import send_alert # --- ADDED ---
+from src.scripts.utils.alerter import send_alert
 
 def process_markets(model, market_catalogues, market_book_lookup, player_info_lookup, df_rankings, df_matches, betting_config):
     """
     Builds features for live markets, makes predictions, and identifies value bets.
     """
-    log_info("Building features, predicting, and detecting value...")
+    log_info(f"Processing {len(market_catalogues)} live markets...")
     value_bets = []
     ev_threshold = Decimal(str(betting_config['ev_threshold']))
 
     for market in market_catalogues:
-        market_book = market_book_lookup.get(market.market_id)
+        market_id = market.market_id
+        market_book = market_book_lookup.get(market_id)
         surface = market.market_name.split(" ")[-1]
         
         if not market_book or len(market.runners) != 2 or len(market_book.runners) != 2:
+            log_info(f"Skipping market {market_id}: Invalid number of runners.")
             continue
 
         try:
@@ -58,6 +60,7 @@ def process_markets(model, market_catalogues, market_book_lookup, player_info_lo
                 p1_ev = (win_prob_p1 * p1_odds) - Decimal('1.0')
                 if p1_ev > ev_threshold:
                     bet_info = {'match': f"{market.competition.name} - {market.event.name}", 'player_name': p1_meta.runner_name, 'odds': float(p1_odds), 'Model Prob': f"{win_prob_p1:.2%}", 'EV': f"{p1_ev:+.2%}"}
+                    log_success(f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['EV']})")
                     value_bets.append(bet_info)
             
             if p2_book.ex.available_to_back:
@@ -65,9 +68,10 @@ def process_markets(model, market_catalogues, market_book_lookup, player_info_lo
                 p2_ev = (win_prob_p2 * p2_odds) - Decimal('1.0')
                 if p2_ev > ev_threshold:
                      bet_info = {'match': f"{market.competition.name} - {market.event.name}", 'player_name': p2_meta.runner_name, 'odds': float(p2_odds), 'Model Prob': f"{win_prob_p2:.2%}", 'EV': f"{p2_ev:+.2%}"}
+                     log_success(f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['EV']})")
                      value_bets.append(bet_info)
         except Exception as e:
-            log_info(f"Skipping market due to processing error: {e}")
+            log_info(f"Skipping market {market_id} due to processing error: {e}")
             continue
     
     # --- ADDED: Send an alert if value bets are found ---

@@ -1,6 +1,5 @@
 # src/scripts/builders/consolidate_data.py
 
-import argparse
 import glob
 from pathlib import Path
 import pandas as pd
@@ -8,9 +7,15 @@ from tqdm import tqdm
 
 from src.scripts.utils.config import load_config
 
-def consolidate_data(input_glob: str, output_csv: Path) -> None:
+def consolidate_data(input_glob: str, output_path: Path) -> None:
     """
-    Consolidates multiple CSV files into a single, chronologically sorted file.
+    Consolidates multiple match data CSVs into a single, chronologically sorted file.
+
+    It filters out doubles, futures, qualifiers, and amateur matches.
+
+    Args:
+        input_glob (str): Glob pattern for the input CSV files.
+        output_path (Path): The path to save the consolidated output CSV file.
     """
     all_files = glob.glob(input_glob)
     if not all_files:
@@ -22,7 +27,7 @@ def consolidate_data(input_glob: str, output_csv: Path) -> None:
         if not any(keyword in Path(f).stem for keyword in exclude_keywords)
     ]
     
-    print(f"Found {len(all_files)} files in total. After filtering, processing {len(csv_files)} main tour singles files.")
+    print(f"Found {len(all_files)} files. After filtering, processing {len(csv_files)} main tour singles files.")
 
     df_list = [pd.read_csv(f, low_memory=False) for f in tqdm(csv_files, desc="Reading Match CSVs")]
     consolidated_df = pd.concat(df_list, ignore_index=True)
@@ -31,11 +36,12 @@ def consolidate_data(input_glob: str, output_csv: Path) -> None:
     consolidated_df.dropna(subset=['tourney_date'], inplace=True)
     consolidated_df = consolidated_df.sort_values(by='tourney_date').reset_index(drop=True)
 
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    consolidated_df.to_csv(output_csv, index=False)
-    print(f"✅ Successfully consolidated {len(consolidated_df)} match rows into {output_csv}")
+    # Ensure the parent directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    consolidated_df.to_csv(output_path, index=False)
+    print(f"✅ Successfully consolidated {len(consolidated_df)} match rows into {output_path}")
 
-def main():
+def main() -> None:
     """Main CLI entrypoint."""
     config = load_config("config.yaml")
     paths = config['data_paths']

@@ -2,13 +2,14 @@
 
 import time
 import schedule
+from datetime import datetime
 from src.scripts.utils.logger import setup_logging, log_info
 from src.scripts.utils.config import load_config
 from src.scripts.pipeline.run_pipeline import run_pipeline_once
 
 def job():
     """The main job to be scheduled."""
-    log_info("--- Starting new pipeline run... ---")
+    log_info(f"--- Starting new pipeline run at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
     config = load_config("config.yaml")
     # Automation always runs in live mode (dry_run=False)
     # Alerts are handled by the process_markets function

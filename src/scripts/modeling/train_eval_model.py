@@ -8,21 +8,36 @@ import pandas as pd
 import argparse
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 import optuna
 from optuna.integration import XGBoostPruningCallback
+from typing import Tuple, Dict, Any, List, Optional
 
-from src.scripts.utils.file_utils import load_dataframes
 from src.scripts.utils.git_utils import get_git_hash
 from src.scripts.utils.logger import log_info, log_success, setup_logging
 from src.scripts.utils.config import load_config
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
 
-def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_splits: int = 5):
+def train_advanced_model(
+    df: pd.DataFrame, random_state: int, n_trials: int, n_splits: int = 5
+) -> Tuple[XGBClassifier, float, Dict[str, Any]]:
+    """
+    Trains an advanced XGBoost model with hyperparameter optimization using Optuna.
+
+    Args:
+        df (pd.DataFrame): The feature-engineered DataFrame for training.
+        random_state (int): The random state for reproducibility.
+        n_trials (int): The number of Optuna trials for hyperparameter search.
+        n_splits (int): The number of splits for cross-validation.
+
+    Returns:
+        Tuple[XGBClassifier, float, Dict[str, Any]]: A tuple containing the trained
+        model, the best cross-validated AUC score, and a dictionary of metadata.
+    """
     df = validate_data(df, PlayerFeaturesSchema, "model_training_input")
 
-    print("Creating a balanced dataset by flipping player perspectives...")
+    log_info("Creating a balanced dataset by flipping player perspectives...")
     df_loser = df.copy()
     p1_cols = [col for col in df.columns if col.startswith('p1_')]
     p2_cols = [col for col in df.columns if col.startswith('p2_')]
@@ -37,12 +52,12 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
     features = [col for col in df_balanced.columns if col not in excluded_cols]
     df_balanced[features] = df_balanced[features].fillna(0)
 
-    print(f"Training model with {len(features)} features using {n_splits}-fold cross-validation.")
+    log_info(f"Training model with {len(features)} features using {n_splits}-fold cross-validation.")
 
     X = df_balanced[features]
     y = df_balanced['winner']
 
-    def objective(trial):
+    def objective(trial: optuna.Trial) -> float:
         param = {
             'objective': 'binary:logistic', 'eval_metric': 'logloss',
             'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
@@ -54,7 +69,7 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
             'random_state': random_state
         }
         
-        scores = []
+        scores: List[float] = []
         skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
         
         for train_index, test_index in skf.split(X, y):
@@ -74,7 +89,7 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
     study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner())
     study.optimize(objective, n_trials=n_trials, n_jobs=-1)
 
-    log_info(f"Best trial average AUC: {study.best_trial.value}")
+    log_info(f"Best trial average AUC: {study.best_trial.value:.4f}")
     log_info(f"Best params: {study.best_params}")
 
     log_info("Training final model on the entire dataset with the best parameters...")
@@ -82,41 +97,50 @@ def train_advanced_model(df: pd.DataFrame, random_state: int, n_trials: int, n_s
     final_model.fit(X, y)
 
     meta = {
-        "timestamp": datetime.now().isoformat(), "git_hash": get_git_hash(),
-        "model_type": type(final_model).__name__, "features": features,
-        "feature_importances": final_model.feature_importances_.tolist(), # Convert to list for JSON
-        "algorithm": "xgb", "train_rows": len(X), "cross_val_auc": study.best_trial.value,
+        "timestamp": datetime.now().isoformat(),
+        "git_hash": get_git_hash(),
+        "model_type": type(final_model).__name__,
+        "algorithm": "xgb",
+        "features": features,
+        "feature_importances": final_model.feature_importances_.tolist(),
+        "train_rows": len(X),
+        "cross_val_auc": study.best_trial.value,
         "best_params": study.best_params
     }
-    return final_model, None, study.best_trial.value, meta
+    return final_model, study.best_trial.value, meta
 
-def main_cli(args):
+def main_cli(args: argparse.Namespace) -> None:
+    """
+    Main CLI entrypoint for training and evaluating the classification model.
+    """
     setup_logging()
     config = load_config(args.config)
     paths = config['data_paths']
     params = config['model_params']
 
-    print("Loading feature files...")
+    log_info("Loading feature files...")
     df = pd.read_csv(paths['consolidated_features'])
     df['tourney_date'] = pd.to_datetime(df['tourney_date'])
 
-    model, report, auc, meta = train_advanced_model(
+    model, auc, meta = train_advanced_model(
         df,
         random_state=params['random_state'],
         n_trials=params['hyperparameter_trials']
     )
 
-    auc_string = f"{auc:.4f}" if auc is not None else "N/A"
-    log_info(f"Final model trained. Best cross-validated AUC: {auc_string}")
+    log_info(f"Final model trained. Best cross-validated AUC: {auc:.4f}")
     
     output_path = Path(paths['model'])
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     joblib.dump(model, output_path)
-    log_success(f"Saved model to {paths['model']}")
-    with open(output_path.with_suffix(".json"), "w") as f:
+    log_success(f"Saved model to {output_path}")
+
+    # Save metadata to a JSON file with the same name as the model
+    meta_path = output_path.with_suffix(".json")
+    with meta_path.open("w") as f:
         json.dump(meta, f, indent=2)
-    log_success(f"Saved metadata to {output_path.with_suffix('.json')}")
+    log_success(f"Saved metadata to {meta_path}")
 
 
 if __name__ == "__main__":
