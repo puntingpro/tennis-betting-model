@@ -25,6 +25,7 @@ def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
 
 # --- Reusable Logging Functions ---
 
+
 def log_info(msg: str) -> None:
     logging.info(msg)
 

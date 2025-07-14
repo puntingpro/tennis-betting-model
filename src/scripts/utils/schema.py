@@ -4,12 +4,14 @@ import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame, Series
 
+
 # --- MODIFIED: Use the more compatible pa.DataFrameModel ---
 class RawMatchesSchema(pa.DataFrameModel):
     """
     Schema for the raw consolidated match data before feature engineering.
     Ensures that essential columns are present and have the correct data type.
     """
+
     tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
     tourney_name: Series[str] = pa.Field(nullable=True)
     surface: Series[str] = pa.Field(nullable=True)
@@ -21,11 +23,13 @@ class RawMatchesSchema(pa.DataFrameModel):
         strict = False
         coerce = True
 
+
 class PlayerFeaturesSchema(pa.DataFrameModel):
     """
     Schema for the final feature-engineered DataFrame.
     Validates the data just before it's used for model training or backtesting.
     """
+
     match_id: Series[str] = pa.Field(nullable=False)
     tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
     surface: Series[str] = pa.Field(nullable=True)
@@ -48,11 +52,13 @@ class PlayerFeaturesSchema(pa.DataFrameModel):
         strict = False
         coerce = True
 
+
 class BacktestResultsSchema(pa.DataFrameModel):
     """
     Schema for the output of the backtest_strategy.py script.
     Ensures the results have the expected columns and data types before analysis.
     """
+
     match_id: Series[str] = pa.Field(nullable=False)
     tourney_name: Series[str] = pa.Field(nullable=True)
     odds: Series[float] = pa.Field(gt=1)
@@ -65,7 +71,10 @@ class BacktestResultsSchema(pa.DataFrameModel):
         strict = True
         coerce = True
 
-def validate_data(df: pd.DataFrame, schema: pa.DataFrameModel, context: str) -> DataFrame:
+
+def validate_data(
+    df: pd.DataFrame, schema: pa.DataFrameModel, context: str
+) -> DataFrame:
     """
     Validates a DataFrame against a pandera schema, providing a clear context on error.
     """

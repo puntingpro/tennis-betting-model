@@ -10,6 +10,7 @@ from pathlib import Path
 from src.scripts.utils.file_utils import load_dataframes
 from src.scripts.utils.logger import log_error, log_info, log_success, setup_logging
 
+
 def run_analyze_ev_distribution(
     df: pd.DataFrame, ev_threshold: float, max_odds: float
 ) -> pd.DataFrame:
@@ -69,20 +70,41 @@ def main_cli() -> None:
     parser = argparse.ArgumentParser(
         description="Analyze and visualize the distribution of Expected Value from backtest results."
     )
-    parser.add_argument("value_bets_glob", help="Glob pattern for the input CSV files containing value bets.")
-    parser.add_argument("--output-csv", type=str, help="Optional: Path to save the filtered DataFrame as a CSV.")
-    parser.add_argument("--ev-threshold", type=float, default=0.1, help="The minimum EV to filter bets by.")
-    parser.add_argument("--max-odds", type=float, default=10.0, help="The maximum odds to filter bets by.")
-    parser.add_argument("--plot", action="store_true", help="If set, display the EV distribution plot.")
-    parser.add_argument("--save-plot", action="store_true", help="If set, save the EV distribution plot to 'data/plots/'.")
-    
+    parser.add_argument(
+        "value_bets_glob",
+        help="Glob pattern for the input CSV files containing value bets.",
+    )
+    parser.add_argument(
+        "--output-csv",
+        type=str,
+        help="Optional: Path to save the filtered DataFrame as a CSV.",
+    )
+    parser.add_argument(
+        "--ev-threshold",
+        type=float,
+        default=0.1,
+        help="The minimum EV to filter bets by.",
+    )
+    parser.add_argument(
+        "--max-odds",
+        type=float,
+        default=10.0,
+        help="The maximum odds to filter bets by.",
+    )
+    parser.add_argument(
+        "--plot", action="store_true", help="If set, display the EV distribution plot."
+    )
+    parser.add_argument(
+        "--save-plot",
+        action="store_true",
+        help="If set, save the EV distribution plot to 'data/plots/'.",
+    )
+
     args = parser.parse_args()
 
     try:
         df = load_dataframes(args.value_bets_glob)
-        filtered_df = run_analyze_ev_distribution(
-            df, args.ev_threshold, args.max_odds
-        )
+        filtered_df = run_analyze_ev_distribution(df, args.ev_threshold, args.max_odds)
 
         if filtered_df.empty:
             log_info("No bets met the specified EV and odds criteria.")
@@ -93,9 +115,7 @@ def main_cli() -> None:
             (filtered_df["odds"] - 1).where(filtered_df["is_correct"], -1).sum()
             / len(filtered_df)
         ) * 100
-        log_success(
-            f"Found {len(filtered_df)} value bets with ROI: {roi:.2f}%"
-        )
+        log_success(f"Found {len(filtered_df)} value bets with ROI: {roi:.2f}%")
 
         if args.plot or args.save_plot:
             fig = plot_ev_distribution(df, args.ev_threshold)
@@ -115,6 +135,7 @@ def main_cli() -> None:
         log_error(f"Error loading files: {e}")
     except Exception as e:
         log_error(f"An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
     main_cli()

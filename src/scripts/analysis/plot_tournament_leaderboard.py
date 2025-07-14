@@ -8,6 +8,7 @@ import argparse
 from src.scripts.utils.logger import log_error, log_success, setup_logging
 from src.scripts.utils.config import load_config
 
+
 def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
     df = df.sort_values(by=sort_by, ascending=False).head(top_n)
 
@@ -24,31 +25,32 @@ def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
     plt.gca().invert_yaxis()
     return fig
 
+
 def main_cli(args):
     """
     Main function for plotting the leaderboard, driven by the config file.
     """
     setup_logging()
     config = load_config(args.config)
-    paths = config['data_paths']
+    paths = config["data_paths"]
 
     try:
-        input_path = Path(paths['tournament_summary'])
+        input_path = Path(paths["tournament_summary"])
         df = pd.read_csv(input_path)
-        
+
         # Default values from the old parser can be hardcoded or moved to config
         fig = run_plot_leaderboard(df, sort_by="roi", top_n=25)
-        
+
         # --- MODIFIED: Use pathlib for robust path creation ---
-        plot_dir = Path(paths.get('plot_dir', 'data/plots/'))
-        output_path = plot_dir / 'tournament_leaderboard.png'
-        
+        plot_dir = Path(paths.get("plot_dir", "data/plots/"))
+        output_path = plot_dir / "tournament_leaderboard.png"
+
         # Create the parent directory if it doesn't exist
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         fig.savefig(output_path, dpi=300)
         log_success(f"Saved leaderboard plot to {output_path}")
-        
+
         # Show the plot in a window
         plt.show()
 
@@ -56,6 +58,7 @@ def main_cli(args):
         log_error(f"Input file not found: {paths['tournament_summary']}")
     except Exception as e:
         log_error(f"An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
