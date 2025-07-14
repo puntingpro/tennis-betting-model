@@ -131,3 +131,5 @@ def process_markets(
         send_alert(bet_df.to_string(index=False))
 
     return value_bets
+
+# Trivial change to force CI re-run
