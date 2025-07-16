@@ -22,7 +22,6 @@ st.set_page_config(
 @st.cache_data
 def load_data(paths):
     """Loads all necessary data for the dashboard, caching the results."""
-    # Load model metadata for feature importances
     model_meta_path = Path(paths['model']).with_suffix(".json")
     if not model_meta_path.exists():
         st.error(f"Model metadata not found at {model_meta_path}. Please run the 'model' command.")
@@ -35,13 +34,12 @@ def load_data(paths):
         'importance': model_meta.get('feature_importances', [])
     }).sort_values(by='importance', ascending=False)
     
-    # Load backtest results for simulation
     backtest_path = Path(paths['backtest_results'])
     if not backtest_path.exists():
         st.error(f"Backtest results not found at {backtest_path}. Please run the 'backtest' command.")
         return None, None
         
-    backtest_df = pd.read_csv(backtest_path)
+    backtest_df = pd.read_csv(backtest_path, parse_dates=['tourney_date'])
     
     return feature_importance_df, backtest_df
 
@@ -62,32 +60,18 @@ def main():
 
         # --- Sidebar for Simulation Controls ---
         st.sidebar.header("Bankroll Simulation Controls")
-        strategy = st.sidebar.selectbox(
-            "Select Staking Strategy",
-            ["kelly", "flat", "percent"],
-            index=0,
-            help="Choose the staking strategy for the simulation."
-        )
-        
-        initial_bankroll = st.sidebar.number_input(
-            "Initial Bankroll ($)",
-            min_value=100.0,
-            value=1000.0,
-            step=100.0
-        )
+        strategy = st.sidebar.selectbox("Select Staking Strategy", ["kelly", "flat", "percent"], index=0)
+        initial_bankroll = st.sidebar.number_input("Initial Bankroll ($)", min_value=100.0, value=1000.0, step=100.0)
 
         if strategy == "kelly":
-            stake_unit = 0.5 # Default, not used directly
-            kelly_fraction = st.sidebar.slider(
-                "Kelly Fraction", 0.1, 1.0, 0.5, 0.05,
-                help="Fraction of the full Kelly stake to use (e.g., 0.5 for half-Kelly)."
-            )
+            stake_unit = 0.5
+            kelly_fraction = st.sidebar.slider("Kelly Fraction", 0.1, 1.0, 0.5, 0.05)
         elif strategy == "flat":
             stake_unit = st.sidebar.number_input("Flat Stake Unit ($)", min_value=1.0, value=10.0, step=1.0)
-            kelly_fraction = 0.0 # Not used
+            kelly_fraction = 0.0
         else: # percent
             stake_unit = st.sidebar.slider("Stake Percentage (%)", 0.5, 10.0, 1.0, 0.5)
-            kelly_fraction = 0.0 # Not used
+            kelly_fraction = 0.0
 
         # --- Run Simulation ---
         simulation_df = simulate_bankroll_growth(
@@ -96,13 +80,12 @@ def main():
             strategy=strategy,
             stake_unit=stake_unit,
             kelly_fraction=kelly_fraction
-        )
+        ).dropna(subset=['bankroll']) # Drop rows where bankroll might be NaN
 
         # --- Main Content Area ---
         st.header("Bankroll Growth Simulation")
 
         if not simulation_df.empty:
-            # --- Key Performance Indicators (KPIs) ---
             final_bankroll = simulation_df['bankroll'].iloc[-1]
             total_profit = final_bankroll - initial_bankroll
             total_wagered = simulation_df['stake'].sum()
@@ -116,19 +99,21 @@ def main():
             kpi_cols[2].metric("Max Drawdown", f"{abs(max_drawdown):.2%}")
             kpi_cols[3].metric("Win Rate", f"{win_rate:.2f}%")
             
-            # --- Bankroll Chart ---
-            st.line_chart(simulation_df.set_index('match_id')['bankroll'])
+            st.line_chart(simulation_df.set_index('tourney_date')['bankroll'])
+            
+            # --- ADDED: Detailed data table for analysis ---
+            st.markdown("---")
+            st.header("Detailed Bet-by-Bet Simulation Data")
+            st.dataframe(simulation_df)
+
         else:
             st.warning("Simulation could not be run with the selected parameters.")
 
         st.markdown("---")
         
-        # --- Model Feature Importances ---
         st.header("Model Feature Importances")
         st.bar_chart(feature_importance_df.head(25).set_index('feature'))
 
-    except FileNotFoundError as e:
-        st.error(f"Error loading data: {e}. Please ensure the `consolidate`, `build`, and `model` commands have been run successfully.")
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
         st.exception(e)

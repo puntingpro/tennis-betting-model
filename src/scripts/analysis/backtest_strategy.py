@@ -45,19 +45,23 @@ def run_backtest(
             df_predict[col] = 0.0
 
     df_predict = df_predict.reindex(columns=final_model_features, fill_value=0)
-    X_historical = df_predict[final_model_features]
+    
+    # --- ADDED: Fill any remaining NaN values to match training conditions ---
+    X_historical = df_predict[final_model_features].fillna(0)
+
 
     # --- Make Predictions ---
     log_info("Making predictions on historical data...")
     df["p1_predicted_prob"] = model.predict_proba(X_historical)[:, 1]
     df["p2_predicted_prob"] = 1 - df["p1_predicted_prob"]
 
+    # --- Simulate Odds and finding value for both players (FIXED) ---
     log_info("Simulating odds and finding value for both players...")
-    df["p1_win_perc"] = pd.to_numeric(df["p1_win_perc"], errors="coerce").fillna(0)
-    df["p2_win_perc"] = pd.to_numeric(df["p2_win_perc"], errors="coerce").fillna(0)
-    total_perc = df["p1_win_perc"] + df["p2_win_perc"]
-    df["p1_true_prob"] = np.where(total_perc > 0, df["p1_win_perc"] / total_perc, 0.5)
-    df["p2_true_prob"] = np.where(total_perc > 0, df["p2_win_perc"] / total_perc, 0.5)
+
+    # Calculate expected scores from Elo
+    df['p1_true_prob'] = 1 / (1 + 10 ** ((df['p2_elo'] - df['p1_elo']) / 400))
+    df['p2_true_prob'] = 1 - df['p1_true_prob']
+
 
     df["p1_odds"] = np.where(
         df["p1_true_prob"] > 0,
@@ -72,7 +76,8 @@ def run_backtest(
     )
     df["p2_odds"] = df["p2_odds"].clip(upper=BACKTEST_MAX_ODDS)
 
-    base_cols = ["match_id", "tourney_name"]
+    # --- MODIFIED: Include tourney_date in the base columns ---
+    base_cols = ["match_id", "tourney_name", "tourney_date"]
 
     # Bets on player 1
     bets_p1 = df[base_cols + ["winner"]].copy()

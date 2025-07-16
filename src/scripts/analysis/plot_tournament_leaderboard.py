@@ -15,12 +15,12 @@ def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
     plt.style.use("seaborn-v0_8-whitegrid")
     fig, ax = plt.subplots(figsize=(12, 10))
 
-    bars = plt.barh(df["tourney_name"], df[sort_by], edgecolor="black")
+    bars = plt.barh(df["tourney_category"], df[sort_by], edgecolor="black")
 
     ax.bar_label(bars, fmt="%.2f", padding=3)
     plt.xlabel(sort_by.replace("_", " ").title())
-    plt.ylabel("Tournament")
-    plt.title(f"Top {top_n} Tournaments by {sort_by.title()}", fontsize=16)
+    plt.ylabel("Tournament Category")
+    plt.title(f"Top {top_n} Tournament Categories by {sort_by.title()}", fontsize=16)
     plt.tight_layout()
     plt.gca().invert_yaxis()
     return fig

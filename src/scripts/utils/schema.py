@@ -61,11 +61,13 @@ class BacktestResultsSchema(pa.DataFrameModel):
 
     match_id: Series[str] = pa.Field(nullable=False)
     tourney_name: Series[str] = pa.Field(nullable=True)
+    tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False) 
     odds: Series[float] = pa.Field(gt=1)
     predicted_prob: Series[float] = pa.Field(ge=0, le=1)
     winner: Series[int] = pa.Field(isin=[0, 1])
     expected_value: Series[float] = pa.Field()
-    kelly_fraction: Series[float] = pa.Field()
+    # --- MODIFIED: Added nullable=False constraint ---
+    kelly_fraction: Series[float] = pa.Field(nullable=False)
 
     class Config:
         strict = True

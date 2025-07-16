@@ -2,12 +2,15 @@
 
 import numpy as np
 import pandas as pd
-import argparse
 from pathlib import Path
 
-from src.scripts.utils.logger import log_info, log_success, setup_logging
+from src.scripts.utils.logger import log_info
 from src.scripts.utils.common import normalize_columns, patch_winner_column
 from src.scripts.utils.constants import DEFAULT_INITIAL_BANKROLL
+
+MAX_KELLY_STAKE_FRACTION = 0.1  # Cap stakes at 10% of the bankroll
+# --- ADDED: A cap on profit per bet to model real-world limits ---
+MAX_PROFIT_PER_BET = 10000.0 # Cap profit on any single bet to $10,000
 
 def calculate_max_drawdown(bankroll_series: pd.Series) -> tuple[float, float]:
     """Calculates the maximum drawdown and the peak bankroll."""
@@ -16,7 +19,6 @@ def calculate_max_drawdown(bankroll_series: pd.Series) -> tuple[float, float]:
     max_drawdown = drawdown.min()
     peak_bankroll = peak.max()
     return peak_bankroll, max_drawdown if pd.notna(max_drawdown) else 0.0
-
 
 def simulate_bankroll_growth(
     df: pd.DataFrame,
@@ -34,41 +36,46 @@ def simulate_bankroll_growth(
         log_info("DataFrame is empty, cannot run simulation.")
         return pd.DataFrame()
 
-    if 'tourney_date' in df.columns:
+    if 'tourney_date' in df.columns and not pd.api.types.is_datetime64_any_dtype(df['tourney_date']):
         df['tourney_date'] = pd.to_datetime(df['tourney_date'], errors='coerce')
-        df = df.sort_values(by='tourney_date').reset_index(drop=True)
+    
+    df.dropna(subset=['tourney_date'], inplace=True)
+    df = df.sort_values(by='tourney_date').reset_index(drop=True)
 
-    # --- MODIFIED: Use a robust iterative loop for simulation ---
-    bankroll = initial_bankroll
+    bankroll = float(initial_bankroll)
     stakes = []
     profits = []
     bankroll_history = []
 
     for _, row in df.iterrows():
-        current_stake = 0
+        current_stake = 0.0
+        
+        row_kelly_fraction = float(row.get("kelly_fraction", 0.0))
+        row_odds = float(row.get("odds", 1.0))
+        row_winner = int(row.get("winner", 0))
+
         if strategy == "kelly":
-            kelly_frac = row.get("kelly_fraction", 0) * kelly_fraction
+            kelly_frac = row_kelly_fraction * float(kelly_fraction)
+            kelly_frac = min(kelly_frac, MAX_KELLY_STAKE_FRACTION)
             current_stake = bankroll * kelly_frac
         elif strategy == "flat":
-            current_stake = stake_unit
+            current_stake = float(stake_unit)
         elif strategy == "percent":
-            current_stake = bankroll * (stake_unit / 100)
+            current_stake = bankroll * (float(stake_unit) / 100.0)
         
-        # Ensure stake is not negative or larger than the bankroll
-        current_stake = max(0, min(current_stake, bankroll))
+        current_stake = max(0.0, min(current_stake, bankroll))
         
-        stakes.append(current_stake)
-        
-        # Calculate profit
-        if row['winner'] == 1:
-            profit = current_stake * (row['odds'] - 1)
+        if row_winner == 1:
+            profit = current_stake * (row_odds - 1.0)
+            # --- ADDED: Cap the profit on a winning bet ---
+            profit = min(profit, MAX_PROFIT_PER_BET)
         else:
             profit = -current_stake
         
-        profits.append(profit)
-        
-        # Update bankroll
         bankroll += profit
+        
+        stakes.append(current_stake)
+        profits.append(profit)
         bankroll_history.append(bankroll)
 
     df['stake'] = stakes
@@ -76,69 +83,3 @@ def simulate_bankroll_growth(
     df['bankroll'] = bankroll_history
     
     return df
-
-def main_cli():
-    setup_logging()
-    parser = argparse.ArgumentParser(
-        description="Simulate bankroll growth based on backtest results.",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument("--value-bets-csv", required=True, help="Path to the CSV file with value bet results.")
-    parser.add_argument("--output-csv", required=True, help="Path to save the detailed simulation results.")
-    parser.add_argument("--strategy", choices=['flat', 'percent', 'kelly'], default='kelly', help="The staking strategy to use.")
-    parser.add_argument("--stake-unit", type=float, default=1.0, help="For 'flat' strategy, the fixed stake amount. For 'percent', the percentage of bankroll to stake.")
-    parser.add_argument("--kelly-fraction", type=float, default=0.5, help="For 'kelly' strategy, the fraction of the Kelly stake to use (e.g., 0.5 for half-Kelly).")
-    parser.add_argument("--initial-bankroll", type=float, default=DEFAULT_INITIAL_BANKROLL, help="The starting bankroll for the simulation.")
-    
-    args = parser.parse_args()
-
-    df = pd.read_csv(args.value_bets_csv)
-    simulation = simulate_bankroll_growth(
-        df,
-        initial_bankroll=args.initial_bankroll,
-        strategy=args.strategy,
-        stake_unit=args.stake_unit,
-        kelly_fraction=args.kelly_fraction
-    )
-    
-    output_path = Path(args.output_csv)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    simulation.to_csv(output_path, index=False)
-    log_info(f"Saved full simulation results to {output_path}")
-
-    if not simulation.empty:
-        total_bets = len(simulation)
-        final_bankroll = simulation['bankroll'].iloc[-1]
-        total_profit = final_bankroll - args.initial_bankroll
-        total_wagered = simulation['stake'].sum()
-        roi = (total_profit / total_wagered) * 100 if total_wagered > 0 else 0
-        winning_bets = simulation[simulation['profit'] > 0]
-        win_rate = (len(winning_bets) / total_bets) * 100 if total_bets > 0 else 0
-        avg_odds = simulation['odds'].mean()
-        peak_bankroll, max_drawdown = calculate_max_drawdown(simulation['bankroll'])
-
-        summary = f"""
-        --- Simulation Summary ---
-        Strategy:           {args.strategy.title()}
-        Initial Bankroll:   ${args.initial_bankroll:,.2f}
-        Final Bankroll:     ${final_bankroll:,.2f}
-        Peak Bankroll:      ${peak_bankroll:,.2f}
-        
-        Total Bets:         {total_bets:,}
-        Winning Bets:       {len(winning_bets):,}
-        Win Rate:           {win_rate:.2f}%
-        
-        Total Wagered:      ${total_wagered:,.2f}
-        Net Profit:         ${total_profit:,.2f}
-        Return on Capital:  {(total_profit / args.initial_bankroll) * 100:,.2f}%
-        Return on Turnover: {roi:.2f}% (ROI)
-        
-        Average Odds:       {avg_odds:.2f}
-        Max Drawdown:       {abs(max_drawdown):.2%}
-        --------------------------
-        """
-        print(summary)
-
-if __name__ == "__main__":
-    main_cli()

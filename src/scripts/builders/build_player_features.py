@@ -10,7 +10,8 @@ import numpy as np
 from src.scripts.utils.config import load_config
 from src.scripts.utils.logger import setup_logging, log_info, log_success
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
-from src.scripts.utils.constants import DEFAULT_PLAYER_RANK
+# --- MODIFIED: Import ELO_INITIAL_RATING ---
+from src.scripts.utils.constants import DEFAULT_PLAYER_RANK, ELO_INITIAL_RATING
 
 
 # --- UNCHANGED FUNCTIONS ---
@@ -152,6 +153,11 @@ def main(args):
         right_on=["match_id", "p1_id_elo", "p2_id_elo"],
         how="left",
     ).drop(columns=["p1_id_elo", "p2_id_elo"])
+        
+    # --- ADDED: Fill missing Elo values to prevent NaN errors downstream ---
+    features_df["p1_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
+    features_df["p2_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
+
 
     p1_stats = player_stats_df.rename(
         columns={
