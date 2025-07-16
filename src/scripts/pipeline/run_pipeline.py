@@ -2,12 +2,13 @@
 
 import pandas as pd
 import joblib
-from src.scripts.utils.logger import setup_logging, log_info, log_warning
+from src.scripts.utils.logger import setup_logging, log_info, log_warning, log_success
 from src.scripts.utils.config import load_config
 from src.scripts.utils.api import (
     login_to_betfair,
     get_tennis_competitions,
     get_live_match_odds,
+    place_bet,
 )
 from src.scripts.utils.data_loader import load_pipeline_data
 from src.scripts.pipeline.value_finder import process_markets
@@ -16,7 +17,6 @@ from src.scripts.pipeline.value_finder import process_markets
 def run_pipeline_once(config: dict, dry_run: bool):
     """
     Runs a single iteration of the value-finding pipeline.
-    This function is designed to be called by both manual and automated scripts.
     """
     paths = config["data_paths"]
     betting_config = config["betting"]
@@ -25,6 +25,11 @@ def run_pipeline_once(config: dict, dry_run: bool):
         log_warning("🚀 Running in DRY-RUN mode. No real bets will be placed.")
     else:
         log_info("🚀 Running in LIVE mode.")
+
+    # In a real application, you would fetch your live bankroll here.
+    # For now, we will use a placeholder value from the config.
+    bankroll = float(betting_config.get("live_bankroll", 1000.0))
+    log_info(f"Using bankroll: ${bankroll:,.2f}")
 
     model = joblib.load(paths["model"])
     player_info_lookup, df_rankings, df_matches = load_pipeline_data(paths)
@@ -62,11 +67,27 @@ def run_pipeline_once(config: dict, dry_run: bool):
 
         if not value_bets:
             log_info("--- No Value Bets Found in This Run ---")
-        elif dry_run:
+            return
+            
+        if dry_run:
             log_info("Value bets found and alerted in DRY-RUN mode.")
-        else:
-            log_warning("Placing live bets...")
-            # In a real application, the code to place bets would go here.
+            return
+
+        log_warning(f"Found {len(value_bets)} value bets. Attempting to place live bets...")
+        for bet in value_bets:
+            # Calculate stake using the Kelly Criterion fraction from the value_finder
+            # You might want to add your own logic here to cap the kelly fraction
+            kelly_fraction = float(bet.get('kelly_fraction', 0.0))
+            stake_to_place = bankroll * kelly_fraction
+
+            place_bet(
+                trading=trading,
+                market_id=bet['market_id'],
+                selection_id=int(bet['selection_id']),
+                price=float(bet['odds']),
+                stake=stake_to_place
+            )
+
     finally:
         trading.logout()
         log_info("\nLogged out.")

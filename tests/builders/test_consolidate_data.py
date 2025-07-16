@@ -2,7 +2,8 @@
 
 import pandas as pd
 from pathlib import Path
-from src.scripts.utils.consolidate_data import consolidate_data
+# Corrected the import path to point to the 'builders' directory
+from src.scripts.builders.consolidate_data import consolidate_data
 
 
 def test_consolidate_data_filters_unwanted_files(tmp_path: Path):

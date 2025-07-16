@@ -4,28 +4,25 @@ import pandas as pd
 import pytest
 from xgboost import XGBClassifier
 
-# --- MODIFIED: Import the correct function ---
 from src.scripts.modeling.train_eval_model import train_advanced_model
 
 
 @pytest.fixture
 def sample_feature_data() -> pd.DataFrame:
     """Creates a small, balanced DataFrame for testing model training."""
-    # Using a more realistic feature set that the model expects
+    # --- MODIFIED: Expanded the dataset to prevent single-class splits ---
     data = {
-        "p1_rank": [10, 20, 30, 40, 5, 15, 25, 35],
-        "p2_rank": [20, 10, 40, 30, 15, 5, 35, 25],
-        "rank_diff": [-10, 10, -10, 10, -10, 10, -10, 10],
-        "p1_hand": ["R", "L", "R", "R", "L", "R", "L", "L"],
-        "p2_hand": ["L", "R", "R", "L", "R", "L", "L", "R"],
-        "winner": [1, 0, 0, 1, 1, 0, 1, 0],
-        "match_id": [1, 1, 2, 2, 3, 3, 4, 4],  # Needed for balancing logic
-        "p1_id": [101, 102, 103, 104, 105, 106, 107, 108],  # Dummy IDs
-        "p2_id": [102, 101, 104, 103, 106, 105, 108, 107],  # Dummy IDs
+        "p1_rank": [10, 20] * 10,
+        "p2_rank": [20, 10] * 10,
+        "rank_diff": [-10, 10] * 10,
+        "p1_hand": ["R", "L"] * 10,
+        "p2_hand": ["L", "R"] * 10,
+        "winner": [1, 0] * 10,
+        "match_id": range(20),
+        "p1_id": [101, 102] * 10,
+        "p2_id": [102, 101] * 10,
     }
-    # Add other columns expected by the training function with default values
     df = pd.DataFrame(data)
-    # Add all other required columns with default values to satisfy schema validation
     required_cols = {
         "tourney_date": pd.to_datetime("2023-01-01"),
         "tourney_name": "Test Open",
@@ -46,11 +43,9 @@ def sample_feature_data() -> pd.DataFrame:
     }
     for col, val in required_cols.items():
         df[col] = val
-
     return df
 
 
-# --- MODIFIED: Update the test to match the new return signature ---
 def test_train_advanced_model(sample_feature_data):
     """
     Tests the advanced model training function to ensure it returns the

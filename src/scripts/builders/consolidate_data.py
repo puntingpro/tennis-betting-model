@@ -12,7 +12,7 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
     """
     Consolidates multiple match data CSVs into a single, chronologically sorted file.
 
-    It filters out doubles, futures, qualifiers, and amateur matches.
+    It filters out doubles, qualifiers, and amateur matches.
 
     Args:
         input_glob (str): Glob pattern for the input CSV files.
@@ -22,7 +22,10 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
     if not all_files:
         raise FileNotFoundError(f"No files found matching the pattern: {input_glob}")
 
-    exclude_keywords = ["doubles", "futures", "qual", "amateur"]
+    # --- BUG FIX: Removed "futures" to allow ITF tournaments to be processed ---
+    exclude_keywords = ["doubles", "qual", "amateur"]
+    # --- END FIX ---
+    
     csv_files = [
         f
         for f in all_files
@@ -30,7 +33,7 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
     ]
 
     print(
-        f"Found {len(all_files)} files. After filtering, processing {len(csv_files)} main tour singles files."
+        f"Found {len(all_files)} files. After filtering, processing {len(csv_files)} files."
     )
 
     df_list = [
@@ -47,7 +50,6 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
         drop=True
     )
 
-    # Ensure the parent directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
     consolidated_df.to_csv(output_path, index=False)
     print(
@@ -63,10 +65,8 @@ def main() -> None:
     atp_glob = paths["raw_atp_matches_glob"]
     wta_glob = paths.get("raw_wta_matches_glob", "")
 
-    # Combine glob patterns from both directories
     all_files = glob.glob(atp_glob) + (glob.glob(wta_glob) if wta_glob else [])
 
-    # Create a unified glob pattern from the parent directory of the first file
     if all_files:
         parent_dir = Path(all_files[0]).parent
         full_glob_pattern = str(parent_dir / "*.csv")

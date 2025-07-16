@@ -1,22 +1,22 @@
 # src/scripts/builders/build_player_features.py
 
 import sys
+import os
 from pathlib import Path
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
+import argparse
 
 from src.scripts.utils.config import load_config
 from src.scripts.utils.logger import setup_logging, log_info, log_success
 from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
-# --- MODIFIED: Import ELO_INITIAL_RATING ---
 from src.scripts.utils.constants import DEFAULT_PLAYER_RANK, ELO_INITIAL_RATING
 
 
-# --- UNCHANGED FUNCTIONS ---
 def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
-    # ... (content remains the same)
+    """Calculates point-in-time stats for each player in each match."""
     id_vars = ["match_id", "tourney_date", "surface"]
     p1_cols = ["winner_id", "loser_id"]
     p2_cols = ["loser_id", "winner_id"]
@@ -65,12 +65,12 @@ def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
-    # ... (content remains the same)
+    """Calculates point-in-time Head-to-Head (H2H) stats."""
     log_info("Calculating Head-to-Head (H2H) stats...")
     h2h_records = defaultdict(lambda: defaultdict(int))
     h2h_results = []
-    df = df.sort_values(by="tourney_date")
-    for row in tqdm(df.itertuples(), total=len(df), desc="H2H Calculation"):
+    df_sorted = df.sort_values(by="tourney_date")
+    for row in tqdm(df_sorted.itertuples(), total=len(df), desc="H2H Calculation"):
         p1_id, p2_id = row.p1_id, row.p2_id
         player_pair = tuple(sorted((p1_id, p2_id)))
         p1_wins_vs_p2 = h2h_records[player_pair][p1_id]
@@ -93,7 +93,6 @@ def main(args):
     config = load_config(args.config)
     paths = config["data_paths"]
 
-    # --- MODIFIED: Load consolidated and other required data ---
     log_info("Loading consolidated data and other required files...")
     df_matches = pd.read_csv(paths["consolidated_matches"])
     df_rankings = pd.read_csv(paths["consolidated_rankings"])
@@ -107,12 +106,9 @@ def main(args):
     df_rankings["ranking_date"] = pd.to_datetime(
         df_rankings["ranking_date"], utc=True, errors="coerce"
     )
-    df_matches.dropna(subset=["tourney_date"], inplace=True)
-    df_rankings.dropna(subset=["ranking_date"], inplace=True)
-
-    log_info("Filtering for matches from 2000 onwards...")
-    df_matches = df_matches[df_matches["tourney_date"].dt.year >= 2000].copy()
-
+    df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
+    df_rankings.dropna(subset=["ranking_date", "player"], inplace=True)
+    
     df_matches["winner_id"] = df_matches["winner_id"].astype("int64")
     df_matches["loser_id"] = df_matches["loser_id"].astype("int64")
     df_rankings["player"] = df_rankings["player"].astype("int64")
@@ -124,40 +120,42 @@ def main(args):
             + df_matches["match_num"].astype(str)
         )
     df_matches = df_matches.sort_values(by="tourney_date")
-
+    
+    # --- BUG FIX: Randomly assign p1 and p2 to prevent data leakage ---
+    log_info("Randomly assigning P1/P2 to prevent data leakage...")
+    is_swapped = np.random.choice([True, False], size=len(df_matches))
+    
+    p1_ids = np.where(is_swapped, df_matches['loser_id'], df_matches['winner_id'])
+    p2_ids = np.where(is_swapped, df_matches['winner_id'], df_matches['loser_id'])
+    
+    features_df = df_matches[["match_id", "tourney_date", "tourney_name", "surface", "winner_id"]].copy()
+    features_df['p1_id'] = p1_ids
+    features_df['p2_id'] = p2_ids
+    # --- END FIX ---
+    
     log_info("Calculating player stats (vectorized)...")
     player_stats_df = calculate_player_stats(df_matches)
 
     log_info("Merging stats and building final feature set...")
-    features_df = df_matches[
-        ["match_id", "tourney_date", "tourney_name", "surface", "winner_id", "loser_id"]
-    ].copy()
-    features_df = features_df.rename(
-        columns={"winner_id": "p1_id", "loser_id": "p2_id"}
-    )
-
-    features_df = pd.merge(
-        features_df, df_matches[["match_id", "winner_id"]], on="match_id"
-    )
     features_df = add_h2h_stats(features_df)
-    features_df["winner"] = (features_df["p1_id"] == features_df["winner_id"]).astype(
-        int
-    )
+    features_df["winner"] = (features_df["p1_id"] == features_df["winner_id"]).astype(int)
     features_df = features_df.drop(columns=["winner_id"])
 
     log_info("Merging Elo ratings...")
     features_df = pd.merge(
         features_df,
         df_elo,
-        left_on=["match_id", "p1_id", "p2_id"],
-        right_on=["match_id", "p1_id_elo", "p2_id_elo"],
+        left_on=["match_id"],
+        right_on=["match_id"],
         how="left",
-    ).drop(columns=["p1_id_elo", "p2_id_elo"])
-        
-    # --- ADDED: Fill missing Elo values to prevent NaN errors downstream ---
+    )
+    
+    features_df["p1_elo"] = np.where(features_df['p1_id'] == features_df['p1_id_elo'], features_df['p1_elo'], features_df['p2_elo'])
+    features_df["p2_elo"] = np.where(features_df['p2_id'] == features_df['p2_id_elo'], features_df['p2_elo'], features_df['p1_elo'])
+    features_df.drop(columns=["p1_id_elo", "p2_id_elo"], inplace=True)
+    
     features_df["p1_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
     features_df["p2_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
-
 
     p1_stats = player_stats_df.rename(
         columns={
@@ -240,8 +238,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml", help="Path to config file.")
     args = parser.parse_args()

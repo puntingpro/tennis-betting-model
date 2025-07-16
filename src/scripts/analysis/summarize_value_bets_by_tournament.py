@@ -38,11 +38,16 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
         return pd.DataFrame()
 
     df['tourney_category'] = df['tourney_name'].apply(get_tournament_category)
-    df['is_correct'] = (df['predicted_prob'].round() == df['winner'])
+    
+    # --- BUG FIX ---
+    # The 'winner' column already indicates if the bet was successful (1) or not (0).
+    # Profit calculation should be based directly on this outcome.
     df['profit'] = df.apply(
-        lambda row: (row['odds'] - 1) if row['is_correct'] else -1,
+        lambda row: (row['odds'] - 1) if row['winner'] == 1 else -1,
         axis=1
     )
+    # --- END FIX ---
+    
     df['stake'] = 1
 
     tournament_summary = (
@@ -76,7 +81,6 @@ def main_cli(args: argparse.Namespace) -> None:
     if not summary_df.empty:
         log_success("✅ Successfully summarized tournaments by category.")
         
-        # --- MODIFIED: Create a version for display that doesn't show tournaments by default ---
         display_df = summary_df.copy()
         if not args.show_tournaments:
             display_df = display_df.drop(columns=['tournaments'])
@@ -106,7 +110,6 @@ if __name__ == "__main__":
         "--min-bets", type=int, default=100,
         help="The minimum number of total bets required to include a tournament category in the summary."
     )
-    # --- ADDED: New flag to control detailed output ---
     parser.add_argument(
         "--show-tournaments", action="store_true",
         help="If set, shows the full list of individual tournaments within each category."

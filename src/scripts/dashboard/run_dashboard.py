@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import json
 from pathlib import Path
+from typing import Dict
 
 from src.scripts.utils.config import load_config
 from src.scripts.pipeline.simulate_bankroll_growth import (
@@ -17,6 +18,22 @@ st.set_page_config(
     page_title="PuntingPro Dashboard",
     page_icon="🎾"
 )
+
+# --- Helper Functions ---
+def get_tournament_category(tourney_name: str) -> str:
+    """Categorizes a tournament name into a broader category for better analysis."""
+    tourney_name = str(tourney_name).lower()
+    category_map: Dict[str, str] = {
+        'grand slam': 'Grand Slam', 'australian open': 'Grand Slam', 'roland garros': 'Grand Slam',
+        'french open': 'Grand Slam', 'wimbledon': 'Grand Slam', 'us open': 'Grand Slam',
+        'masters': 'Masters 1000', 'tour finals': 'Tour Finals', 'next gen finals': 'Tour Finals',
+        'atp cup': 'Team Event', 'davis cup': 'Team Event', 'laver cup': 'Team Event',
+        'olympics': 'Olympics', 'challenger': 'Challenger', 'itf': 'ITF / Futures'
+    }
+    for keyword, category in category_map.items():
+        if keyword in tourney_name:
+            return category
+    return 'ATP / WTA Tour'
 
 # --- Data Caching ---
 @st.cache_data
@@ -40,6 +57,7 @@ def load_data(paths):
         return None, None
         
     backtest_df = pd.read_csv(backtest_path, parse_dates=['tourney_date'])
+    backtest_df['tourney_category'] = backtest_df['tourney_name'].apply(get_tournament_category)
     
     return feature_importance_df, backtest_df
 
@@ -49,8 +67,8 @@ def main():
     st.markdown("An interactive dashboard to analyze model performance and simulate betting strategies.")
 
     try:
-        config = load_config("config.yaml")
-        paths = config['data_paths']
+        config = load_config("config.yaml") #
+        paths = config['data_paths'] #
         
         feature_importance_df, backtest_df = load_data(paths)
 
@@ -58,8 +76,8 @@ def main():
             st.warning("Required data files are missing. Please run the build, model, and backtest commands.")
             return
 
-        # --- Sidebar for Simulation Controls ---
-        st.sidebar.header("Bankroll Simulation Controls")
+        # --- Sidebar ---
+        st.sidebar.header("Simulation Controls")
         strategy = st.sidebar.selectbox("Select Staking Strategy", ["kelly", "flat", "percent"], index=0)
         initial_bankroll = st.sidebar.number_input("Initial Bankroll ($)", min_value=100.0, value=1000.0, step=100.0)
 
@@ -73,14 +91,40 @@ def main():
             stake_unit = st.sidebar.slider("Stake Percentage (%)", 0.5, 10.0, 1.0, 0.5)
             kelly_fraction = 0.0
 
-        # --- Run Simulation ---
+        st.sidebar.header("Data Filters")
+        
+        # --- ADDED: Data Filtering Controls ---
+        min_date = backtest_df['tourney_date'].min().date()
+        max_date = backtest_df['tourney_date'].max().date()
+        date_range = st.sidebar.date_input("Date Range", [min_date, max_date])
+        
+        all_categories = sorted(backtest_df['tourney_category'].unique())
+        selected_categories = st.sidebar.multiselect("Tournament Categories", all_categories, default=all_categories)
+        
+        min_odds = float(backtest_df['odds'].min())
+        max_odds = float(backtest_df['odds'].max())
+        odds_range = st.sidebar.slider("Odds Range", min_value=min_odds, max_value=max_odds, value=(min_odds, max_odds))
+
+        # --- Apply Filters ---
+        start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+        filtered_df = backtest_df[
+            (backtest_df['tourney_date'] >= start_date) &
+            (backtest_df['tourney_date'] <= end_date) &
+            (backtest_df['tourney_category'].isin(selected_categories)) &
+            (backtest_df['odds'] >= odds_range[0]) &
+            (backtest_df['odds'] <= odds_range[1])
+        ]
+        
+        st.sidebar.info(f"Displaying {len(filtered_df)} of {len(backtest_df)} total backtested bets.")
+
+        # --- Run Simulation on Filtered Data ---
         simulation_df = simulate_bankroll_growth(
-            backtest_df.copy(),
+            filtered_df.copy(),
             initial_bankroll=initial_bankroll,
             strategy=strategy,
             stake_unit=stake_unit,
             kelly_fraction=kelly_fraction
-        ).dropna(subset=['bankroll']) # Drop rows where bankroll might be NaN
+        ).dropna(subset=['bankroll'])
 
         # --- Main Content Area ---
         st.header("Bankroll Growth Simulation")
@@ -94,20 +138,28 @@ def main():
             peak_bankroll, max_drawdown = calculate_max_drawdown(simulation_df['bankroll'])
 
             kpi_cols = st.columns(4)
-            kpi_cols[0].metric("Final Bankroll", f"${final_bankroll:,.2f}", f"{total_profit:,.2f}")
+            kpi_cols[0].metric("Final Bankroll", f"${final_bankroll:,.2f}", f"Profit: ${total_profit:,.2f}")
             kpi_cols[1].metric("Return on Investment", f"{roi:.2f}%")
             kpi_cols[2].metric("Max Drawdown", f"{abs(max_drawdown):.2%}")
             kpi_cols[3].metric("Win Rate", f"{win_rate:.2f}%")
             
-            st.line_chart(simulation_df.set_index('tourney_date')['bankroll'])
+            # --- MODIFIED: Added Cumulative Profit chart ---
+            simulation_df['cumulative_profit'] = simulation_df['profit'].cumsum()
             
-            # --- ADDED: Detailed data table for analysis ---
+            chart_cols = st.columns(2)
+            chart_cols[0].subheader("Bankroll Growth")
+            chart_cols[0].line_chart(simulation_df.set_index('tourney_date')['bankroll'])
+            chart_cols[1].subheader("Cumulative Profit")
+            chart_cols[1].line_chart(simulation_df.set_index('tourney_date')['cumulative_profit'])
+            
             st.markdown("---")
-            st.header("Detailed Bet-by-Bet Simulation Data")
-            st.dataframe(simulation_df)
+            st.header("Simulation Data")
+            # --- ADDED: Detailed data table for analysis ---
+            if st.checkbox("Show Detailed Bet-by-Bet Simulation Data"):
+                st.dataframe(simulation_df)
 
         else:
-            st.warning("Simulation could not be run with the selected parameters.")
+            st.warning("No data matches the selected filters. Simulation could not be run.")
 
         st.markdown("---")
         

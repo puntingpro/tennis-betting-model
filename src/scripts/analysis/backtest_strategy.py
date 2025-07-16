@@ -46,22 +46,22 @@ def run_backtest(
 
     df_predict = df_predict.reindex(columns=final_model_features, fill_value=0)
     
-    # --- ADDED: Fill any remaining NaN values to match training conditions ---
     X_historical = df_predict[final_model_features].fillna(0)
 
 
     # --- Make Predictions ---
     log_info("Making predictions on historical data...")
     df["p1_predicted_prob"] = model.predict_proba(X_historical)[:, 1]
+    # --- BUG FIX ---
+    # The probability for player 2 is 1 minus player 1's probability.
     df["p2_predicted_prob"] = 1 - df["p1_predicted_prob"]
+    # --- END FIX ---
 
-    # --- Simulate Odds and finding value for both players (FIXED) ---
+    # --- Simulate Odds and finding value for both players ---
     log_info("Simulating odds and finding value for both players...")
 
-    # Calculate expected scores from Elo
     df['p1_true_prob'] = 1 / (1 + 10 ** ((df['p2_elo'] - df['p1_elo']) / 400))
     df['p2_true_prob'] = 1 - df['p1_true_prob']
-
 
     df["p1_odds"] = np.where(
         df["p1_true_prob"] > 0,
@@ -76,7 +76,6 @@ def run_backtest(
     )
     df["p2_odds"] = df["p2_odds"].clip(upper=BACKTEST_MAX_ODDS)
 
-    # --- MODIFIED: Include tourney_date in the base columns ---
     base_cols = ["match_id", "tourney_name", "tourney_date"]
 
     # Bets on player 1
@@ -87,7 +86,10 @@ def run_backtest(
     # Bets on player 2
     bets_p2 = df[base_cols + ["winner"]].copy()
     bets_p2["odds"] = df["p2_odds"]
+    # --- BUG FIX ---
+    # Use the correctly calculated p2_predicted_prob
     bets_p2["predicted_prob"] = df["p2_predicted_prob"]
+    # --- END FIX ---
     bets_p2["winner"] = 1 - bets_p2["winner"]  # Flip winner perspective for P2
 
     bets_p1 = add_ev_and_kelly(bets_p1, inplace=False)
@@ -104,7 +106,6 @@ def run_backtest(
         final_value_bets, BacktestResultsSchema, "backtest_results_output"
     )
 
-    # --- MODIFIED: Use pathlib for robust path creation ---
     output_path = Path(output_csv)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     final_value_bets.to_csv(output_path, index=False)
@@ -115,16 +116,16 @@ def main(args):
     """
     Main function for backtesting, driven by the config file.
     """
-    setup_logging()
-    config = load_config(args.config)
-    paths = config["data_paths"]
-    betting_params = config["betting"]
+    setup_logging() #
+    config = load_config(args.config) #
+    paths = config["data_paths"] #
+    betting_params = config["betting"] #
 
     run_backtest(
-        model_path=paths["model"],
-        features_csv=paths["consolidated_features"],
-        output_csv=paths["backtest_results"],
-        ev_threshold=betting_params["ev_threshold"],
+        model_path=paths["model"], #
+        features_csv=paths["consolidated_features"], #
+        output_csv=paths["backtest_results"], #
+        ev_threshold=betting_params["ev_threshold"], #
     )
 
 

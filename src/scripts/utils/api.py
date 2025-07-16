@@ -7,19 +7,14 @@ from betfairlightweight.exceptions import APIError
 from betfairlightweight.resources import MarketBook, MarketCatalogue
 from typing import List, Tuple, Dict
 
-# --- FIXED: Added log_error to the import statement ---
-from .logger import log_info, log_warning, log_error
+# --- BUG FIX ---
+from .logger import log_info, log_warning, log_error, log_success
+# --- END FIX ---
 
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     """
     Logs in to the Betfair API, retrying on failure with exponential backoff.
-
-    Args:
-        config (dict): A dictionary containing configuration details.
-
-    Returns:
-        betfairlightweight.APIClient: An authenticated API client instance.
     """
     session = requests.Session()
     proxy_url = os.getenv("PROXY_URL")
@@ -40,7 +35,6 @@ def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
         session=session,
     )
 
-    # --- ADDED: Retry logic for login ---
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -50,12 +44,12 @@ def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
         except APIError as e:
             log_warning(f"Login attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
-                wait_time = 2**attempt  # Exponential backoff: 1, 2, 4 seconds
+                wait_time = 2**attempt
                 log_info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
                 log_error("❌ All login attempts failed. Aborting.")
-                raise  # Re-raise the final exception
+                raise
 
 
 def get_tennis_competitions(
@@ -63,13 +57,6 @@ def get_tennis_competitions(
 ) -> List[str]:
     """
     Fetches and filters tennis competitions by a list of keywords.
-
-    Args:
-        trading (betfairlightweight.APIClient): The authenticated API client.
-        target_keywords (List[str]): A list of keywords to filter competition names.
-
-    Returns:
-        List[str]: A list of competition IDs that match the keywords.
     """
     tennis_competitions = trading.betting.list_competitions(
         filter=betfairlightweight.filters.market_filter(event_type_ids=["2"])
@@ -85,17 +72,8 @@ def get_live_match_odds(
     trading: betfairlightweight.APIClient, competition_ids: List[str]
 ) -> Tuple[List[MarketCatalogue], Dict[str, MarketBook]]:
     """
-    Fetches market catalogues and books, retrying on failure with exponential backoff.
-
-    Args:
-        trading (betfairlightweight.APIClient): The authenticated API client.
-        competition_ids (List[str]): A list of competition IDs to fetch markets for.
-
-    Returns:
-        Tuple[List[MarketCatalogue], Dict[str, MarketBook]]: A tuple containing a list
-        of market catalogues and a dictionary mapping market IDs to market books.
+    Fetches market catalogues and books, retrying on failure.
     """
-    # --- ADDED: Retry logic for fetching market data ---
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -127,7 +105,6 @@ def get_live_match_odds(
 
         except APIError as e:
             error_string = str(e)
-            # Don't retry for "No Markets Found" errors, as that is expected behavior
             if "DSC-0018" in error_string or "NO_MARKETS" in error_string:
                 log_info(
                     "No active match odds markets found for the targeted competitions at this time."
@@ -136,14 +113,48 @@ def get_live_match_odds(
 
             log_warning(f"API call attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
-                wait_time = 2**attempt  # Exponential backoff: 1, 2, 4 seconds
+                wait_time = 2**attempt
                 log_info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
                 log_error(
                     "❌ All API attempts failed. Returning empty data for this run."
                 )
-                return (
-                    [],
-                    {},
-                )  # Return empty data to allow the pipeline to continue safely
+                return [], {}
+
+
+def place_bet(
+    trading: betfairlightweight.APIClient,
+    market_id: str,
+    selection_id: int,
+    price: float,
+    stake: float,
+) -> bool:
+    """
+    Places a 'LIMIT' order with 'KEEP' persistence.
+    """
+    if stake < 2.0:
+        log_warning(f"Stake {stake:.2f} is below minimum, not placing bet.")
+        return False
+
+    trade = betfairlightweight.filters.limit_order(
+        size=round(stake, 2), price=price, persistence_type="KEEP"
+    )
+    instruction = betfairlightweight.filters.place_instruction(
+        selection_id=selection_id, order_type="LIMIT", side="BACK", limit_order=trade
+    )
+    try:
+        order = trading.betting.place_orders(
+            market_id=market_id, instructions=[instruction]
+        )
+        if order.status == "SUCCESS":
+            log_success(
+                f"✅ Bet placed successfully on selection {selection_id} in market {market_id}."
+            )
+            return True
+        else:
+            log_warning(f"⚠️ Bet placement failed with status: {order.status}")
+            return False
+    except APIError as e:
+        log_error(f"❌ API Error during bet placement: {e}")
+        return False
