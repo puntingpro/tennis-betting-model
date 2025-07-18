@@ -131,5 +131,3 @@ def process_markets(
         send_alert(bet_df.to_string(index=False))
 
     return value_bets
-
-

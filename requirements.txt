@@ -4,7 +4,7 @@ joblib
 matplotlib
 numpy
 optuna
-optuna-integration[xgboost] # --- ADDED ---
+optuna-integration[xgboost]
 pandas
 pandera
 python-json-logger
@@ -17,7 +17,7 @@ streamlit
 xgboost
 
 # --- Development & Linting Tools ---
-black
+black==23.12.1
 mypy
 pytest
 pytest-cov
