@@ -10,6 +10,7 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
+from xgboost.callback import EarlyStopping  # FIX: Import the EarlyStopping callback
 import optuna
 from optuna.integration import XGBoostPruningCallback
 from typing import Tuple, Dict, Any, List
@@ -85,15 +86,18 @@ def train_advanced_model(
             y_train, y_test = y.iloc[train_index], y.iloc[test_index]
 
             model = XGBClassifier(**param, use_label_encoder=False)
+            pruning_callback = XGBoostPruningCallback(trial, "validation_0-logloss")
 
-            # FIX: The pruning_callback is now created and used in the same line.
+            # FIX: Create an EarlyStopping callback instance.
+            early_stopping = EarlyStopping(rounds=50, save_best=True)
+
+            # FIX: Pass both the pruner and early stopping to the `callbacks` list.
             model.fit(
                 X_train,
                 y_train,
                 eval_set=[(X_test, y_test)],
-                early_stopping_rounds=50,
                 verbose=False,
-                callbacks=[XGBoostPruningCallback(trial, "validation_0-logloss")],
+                callbacks=[pruning_callback, early_stopping],
             )
 
             y_prob = model.predict_proba(X_test)[:, 1]
