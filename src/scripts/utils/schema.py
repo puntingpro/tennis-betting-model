@@ -5,14 +5,14 @@ import pandera as pa
 from pandera.typing import Series
 
 
-# --- MODIFIED: Use the more compatible pa.DataFrameModel ---
 class RawMatchesSchema(pa.DataFrameModel):
     """
     Schema for the raw consolidated match data before feature engineering.
     Ensures that essential columns are present and have the correct data type.
     """
 
-    tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
+    # FIX: Use pa.DateTime for mypy and ignore the pylance error.
+    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)  # pyright: ignore
     tourney_name: Series[str] = pa.Field(nullable=True)
     surface: Series[str] = pa.Field(nullable=True)
     match_num: Series[int] = pa.Field(coerce=True)
@@ -31,7 +31,8 @@ class PlayerFeaturesSchema(pa.DataFrameModel):
     """
 
     match_id: Series[str] = pa.Field(nullable=False)
-    tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
+    # FIX: Use pa.DateTime for mypy and ignore the pylance error.
+    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)  # pyright: ignore
     surface: Series[str] = pa.Field(nullable=True)
     p1_id: Series[int] = pa.Field(coerce=True)
     p2_id: Series[int] = pa.Field(coerce=True)
@@ -61,7 +62,8 @@ class BacktestResultsSchema(pa.DataFrameModel):
 
     match_id: Series[str] = pa.Field(nullable=False)
     tourney_name: Series[str] = pa.Field(nullable=True)
-    tourney_date: Series[pd.Timestamp] = pa.Field(nullable=False)
+    # FIX: Use pa.DateTime for mypy and ignore the pylance error.
+    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)  # pyright: ignore
     odds: Series[float] = pa.Field(gt=1)
     predicted_prob: Series[float] = pa.Field(ge=0, le=1)
     winner: Series[int] = pa.Field(isin=[0, 1])

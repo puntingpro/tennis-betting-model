@@ -37,8 +37,9 @@ def generate_elo_ratings(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(by="tourney_date").reset_index(drop=True)
 
     for row in tqdm(df.itertuples(), total=len(df), desc="Calculating Elo"):
-        winner_id = int(row.winner_id)
-        loser_id = int(row.loser_id)
+        # FIX: Ignore the strict mypy error for itertuples, as we know the data is clean.
+        winner_id = int(row.winner_id)  # type: ignore
+        loser_id = int(row.loser_id)  # type: ignore
 
         # Get the current ratings, defaulting to the initial rating if a player is new
         winner_elo = elo_ratings.get(winner_id, ELO_INITIAL_RATING)
@@ -78,6 +79,10 @@ def main():
         df_matches["tourney_date"], errors="coerce"
     )
     df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
+
+    # Ensure these columns are integer types before processing.
+    df_matches["winner_id"] = df_matches["winner_id"].astype(int)
+    df_matches["loser_id"] = df_matches["loser_id"].astype(int)
 
     # Ensure match_id is present, creating it if necessary
     if "match_id" not in df_matches.columns:

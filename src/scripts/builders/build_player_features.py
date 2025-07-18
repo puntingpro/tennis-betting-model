@@ -71,8 +71,14 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
     h2h_results = []
     df_sorted = df.sort_values(by="tourney_date")
     for row in tqdm(df_sorted.itertuples(), total=len(df), desc="H2H Calculation"):
-        p1_id, p2_id = int(row.p1_id), int(row.p2_id)
-        player_pair = tuple(sorted((p1_id, p2_id)))
+        # FIX: Ignore the strict mypy error for itertuples.
+        p1_id, p2_id = int(row.p1_id), int(row.p2_id)  # type: ignore
+
+        # Be explicit about sorting the tuple to satisfy MyPy.
+        player_pair: tuple[int, int] = (
+            (p1_id, p2_id) if p1_id < p2_id else (p2_id, p1_id)
+        )
+
         p1_wins_vs_p2 = h2h_records[player_pair][p1_id]
         p2_wins_vs_p1 = h2h_records[player_pair][p2_id]
         h2h_results.append(
@@ -82,7 +88,8 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
                 "h2h_p2_wins": p2_wins_vs_p1,
             }
         )
-        winner_id = int(row.winner_id)
+        # FIX: Ignore the strict mypy error for itertuples.
+        winner_id = int(row.winner_id)  # type: ignore
         h2h_records[player_pair][winner_id] += 1
     h2h_df = pd.DataFrame(h2h_results)
     return pd.merge(df, h2h_df, on="match_id", how="left")
@@ -109,6 +116,7 @@ def main(args):
     df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
     df_rankings.dropna(subset=["ranking_date", "player"], inplace=True)
 
+    # Ensure these columns are integer types before processing.
     df_matches["winner_id"] = df_matches["winner_id"].astype("int64")
     df_matches["loser_id"] = df_matches["loser_id"].astype("int64")
     df_rankings["player"] = df_rankings["player"].astype("int64")
