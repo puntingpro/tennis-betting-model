@@ -49,7 +49,7 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
-      
+
       - name: Run the automation script
         env:
           PROXY_URL: ${{ secrets.PROXY_URL }}

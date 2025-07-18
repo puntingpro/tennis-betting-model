@@ -38,7 +38,7 @@ jobs:
       - name: Run tests and report coverage
         run: |
           PYTHONPATH=src pytest --cov=src --cov-report=xml --maxfail=1 --disable-warnings -q
-      
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:

@@ -19,6 +19,7 @@ xgboost
 # --- Development & Linting Tools ---
 black==23.12.1
 mypy
+pre-commit
 pytest
 pytest-cov
 ruff==0.12.4
