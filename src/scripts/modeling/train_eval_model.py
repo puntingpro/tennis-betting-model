@@ -87,12 +87,13 @@ def train_advanced_model(
             model = XGBClassifier(**param, use_label_encoder=False)
             pruning_callback = XGBoostPruningCallback(trial, "validation_0-logloss")
 
-            # FIX: The `early_stopping_rounds` parameter is now passed via the callbacks.
-            # The Optuna callback handles this automatically.
+            # FIX: The 'callbacks' parameter is removed. The pruner works with
+            # early_stopping_rounds, which is a more standard XGBoost parameter.
             model.fit(
                 X_train,
                 y_train,
                 eval_set=[(X_test, y_test)],
+                early_stopping_rounds=50,
                 verbose=False,
                 callbacks=[pruning_callback],
             )
