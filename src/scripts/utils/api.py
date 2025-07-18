@@ -133,7 +133,7 @@ def place_bet(
     """
     Places a 'LIMIT' order with 'KEEP' persistence.
     """
-    if stake < 2.0:
+    if stake < 0.03:
         log_warning(f"Stake {stake:.2f} is below minimum, not placing bet.")
         return False
 

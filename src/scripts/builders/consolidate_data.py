@@ -12,7 +12,8 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
     """
     Consolidates multiple match data CSVs into a single, chronologically sorted file.
 
-    It filters out doubles, qualifiers, and amateur matches.
+    It filters out doubles, qualifiers, and amateur matches, but makes a specific
+    exception to include the main-draw Challenger files.
 
     Args:
         input_glob (str): Glob pattern for the input CSV files.
@@ -22,15 +23,20 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
     if not all_files:
         raise FileNotFoundError(f"No files found matching the pattern: {input_glob}")
 
-    # --- BUG FIX: Removed "futures" to allow ITF tournaments to be processed ---
+    # --- BUG FIX: Added more specific logic to handle 'qual_chall' files correctly ---
     exclude_keywords = ["doubles", "qual", "amateur"]
-    # --- END FIX ---
     
-    csv_files = [
-        f
-        for f in all_files
-        if not any(keyword in Path(f).stem for keyword in exclude_keywords)
-    ]
+    csv_files = []
+    for f in all_files:
+        filename_stem = Path(f).stem
+        # Keep the file if it's a challenger file, even if 'qual' is in the name
+        if "qual_chall" in filename_stem:
+            csv_files.append(f)
+            continue
+        # Otherwise, exclude the file if it contains any of the exclusion keywords
+        if not any(keyword in filename_stem for keyword in exclude_keywords):
+            csv_files.append(f)
+    # --- END FIX ---
 
     print(
         f"Found {len(all_files)} files. After filtering, processing {len(csv_files)} files."

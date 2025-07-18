@@ -37,6 +37,6 @@ betting:
     - "Finals"
     - "Olympics"
     # --- Optional, High-Variance Categories ---
-    # - "Team Event"  # Recommended to disable initially due to high variance and potentially inflated ROI.
-    # - "Challenger"  # Challenger ROI should be analyzed from the summary before enabling.
-    # - "ITF"         # ITF ROI should be analyzed from the summary before enabling.
+    - "Team Event"
+    - "Challenger"
+    - "ITF"

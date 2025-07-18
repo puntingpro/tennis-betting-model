@@ -15,13 +15,16 @@ def get_tournament_category(tourney_name: str) -> str:
     """
     tourney_name = str(tourney_name).lower()
     
+    # --- BUG FIX: Added 'futures' and made 'challenger' check more robust ---
     category_map: Dict[str, str] = {
         'grand slam': 'Grand Slam', 'australian open': 'Grand Slam', 'roland garros': 'Grand Slam',
         'french open': 'Grand Slam', 'wimbledon': 'Grand Slam', 'us open': 'Grand Slam',
         'masters': 'Masters 1000', 'tour finals': 'Tour Finals', 'next gen finals': 'Tour Finals',
         'atp cup': 'Team Event', 'davis cup': 'Team Event', 'laver cup': 'Team Event',
-        'olympics': 'Olympics', 'challenger': 'Challenger', 'itf': 'ITF / Futures'
+        'olympics': 'Olympics', 'challenger': 'Challenger', 'chall': 'Challenger', # Added 'chall' for robustness
+        'itf': 'ITF / Futures', 'futures': 'ITF / Futures' # Added 'futures'
     }
+    # --- END FIX ---
 
     for keyword, category in category_map.items():
         if keyword in tourney_name:
@@ -39,14 +42,10 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
 
     df['tourney_category'] = df['tourney_name'].apply(get_tournament_category)
     
-    # --- BUG FIX ---
-    # The 'winner' column already indicates if the bet was successful (1) or not (0).
-    # Profit calculation should be based directly on this outcome.
     df['profit'] = df.apply(
         lambda row: (row['odds'] - 1) if row['winner'] == 1 else -1,
         axis=1
     )
-    # --- END FIX ---
     
     df['stake'] = 1
 

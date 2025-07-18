@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import numpy as np
 from pathlib import Path
 from typing import Dict
 
@@ -23,13 +24,16 @@ st.set_page_config(
 def get_tournament_category(tourney_name: str) -> str:
     """Categorizes a tournament name into a broader category for better analysis."""
     tourney_name = str(tourney_name).lower()
+    # --- BUG FIX: Added 'chall' and 'futures' to map ---
     category_map: Dict[str, str] = {
         'grand slam': 'Grand Slam', 'australian open': 'Grand Slam', 'roland garros': 'Grand Slam',
         'french open': 'Grand Slam', 'wimbledon': 'Grand Slam', 'us open': 'Grand Slam',
         'masters': 'Masters 1000', 'tour finals': 'Tour Finals', 'next gen finals': 'Tour Finals',
         'atp cup': 'Team Event', 'davis cup': 'Team Event', 'laver cup': 'Team Event',
-        'olympics': 'Olympics', 'challenger': 'Challenger', 'itf': 'ITF / Futures'
+        'olympics': 'Olympics', 'challenger': 'Challenger', 'chall': 'Challenger',
+        'itf': 'ITF / Futures', 'futures': 'ITF / Futures'
     }
+    # --- END FIX ---
     for keyword, category in category_map.items():
         if keyword in tourney_name:
             return category
@@ -67,8 +71,8 @@ def main():
     st.markdown("An interactive dashboard to analyze model performance and simulate betting strategies.")
 
     try:
-        config = load_config("config.yaml") #
-        paths = config['data_paths'] #
+        config = load_config("config.yaml")
+        paths = config['data_paths']
         
         feature_importance_df, backtest_df = load_data(paths)
 
@@ -93,7 +97,6 @@ def main():
 
         st.sidebar.header("Data Filters")
         
-        # --- ADDED: Data Filtering Controls ---
         min_date = backtest_df['tourney_date'].min().date()
         max_date = backtest_df['tourney_date'].max().date()
         date_range = st.sidebar.date_input("Date Range", [min_date, max_date])
@@ -124,7 +127,9 @@ def main():
             strategy=strategy,
             stake_unit=stake_unit,
             kelly_fraction=kelly_fraction
-        ).dropna(subset=['bankroll'])
+        )
+        
+        simulation_df = simulation_df.replace([np.inf, -np.inf], np.nan).dropna(subset=['bankroll'])
 
         # --- Main Content Area ---
         st.header("Bankroll Growth Simulation")
@@ -143,18 +148,23 @@ def main():
             kpi_cols[2].metric("Max Drawdown", f"{abs(max_drawdown):.2%}")
             kpi_cols[3].metric("Win Rate", f"{win_rate:.2f}%")
             
-            # --- MODIFIED: Added Cumulative Profit chart ---
             simulation_df['cumulative_profit'] = simulation_df['profit'].cumsum()
+            
+            # --- BUG FIX: Resample data for charts if it's too large ---
+            chart_data = simulation_df.set_index('tourney_date')
+            if len(chart_data) > 5000:
+                st.info(f"💡 Displaying a resampled summary for performance. Full data is in the table below.")
+                chart_data = chart_data.resample('W').last()
+            # --- END FIX ---
             
             chart_cols = st.columns(2)
             chart_cols[0].subheader("Bankroll Growth")
-            chart_cols[0].line_chart(simulation_df.set_index('tourney_date')['bankroll'])
+            chart_cols[0].line_chart(chart_data['bankroll'])
             chart_cols[1].subheader("Cumulative Profit")
-            chart_cols[1].line_chart(simulation_df.set_index('tourney_date')['cumulative_profit'])
+            chart_cols[1].line_chart(chart_data['cumulative_profit'])
             
             st.markdown("---")
             st.header("Simulation Data")
-            # --- ADDED: Detailed data table for analysis ---
             if st.checkbox("Show Detailed Bet-by-Bet Simulation Data"):
                 st.dataframe(simulation_df)
 
