@@ -2,7 +2,6 @@
 
 import pandas as pd
 from .logger import log_info
-from .file_utils import load_dataframes
 
 
 def load_pipeline_data(paths: dict) -> tuple:

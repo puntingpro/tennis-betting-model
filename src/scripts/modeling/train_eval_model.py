@@ -12,7 +12,7 @@ from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 import optuna
 from optuna.integration import XGBoostPruningCallback
-from typing import Tuple, Dict, Any, List, Optional
+from typing import Tuple, Dict, Any, List
 
 from src.scripts.utils.git_utils import get_git_hash
 from src.scripts.utils.logger import log_info, log_success, setup_logging

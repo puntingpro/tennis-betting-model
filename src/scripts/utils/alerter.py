@@ -33,7 +33,7 @@ def send_alert(message: str) -> None:
     """
     # --- Console Alert ---
     print("\n" + "=" * 50)
-    log_success(f"🚀 ALERT: New Value Bets Found!")
+    log_success("🚀 ALERT: New Value Bets Found!")
     print(message)
     print("=" * 50 + "\n")
 

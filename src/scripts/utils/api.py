@@ -21,7 +21,7 @@ def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
     proxy_url = os.getenv("PROXY_URL")
 
     if proxy_url:
-        log_info(f"Connecting via proxy...")
+        log_info("Connecting via proxy...")
         proxies = {
             "http": proxy_url,
             "https": proxy_url,

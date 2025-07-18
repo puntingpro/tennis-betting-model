@@ -1,5 +1,4 @@
 # src/scripts/analysis/backtest_strategy.py
-import os
 from pathlib import Path
 import joblib
 import pandas as pd

@@ -1,7 +1,5 @@
 # src/scripts/builders/build_player_features.py
 
-import sys
-import os
 from pathlib import Path
 from collections import defaultdict
 import pandas as pd

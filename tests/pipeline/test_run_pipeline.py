@@ -1,7 +1,6 @@
 # tests/pipeline/test_run_pipeline.py
 
 import pandas as pd
-import pytest
 from unittest.mock import MagicMock
 
 from src.scripts.pipeline.value_finder import process_markets

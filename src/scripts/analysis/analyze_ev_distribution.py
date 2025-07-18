@@ -1,7 +1,6 @@
 # src/scripts/analysis/analyze_ev_distribution.py
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
 import argparse

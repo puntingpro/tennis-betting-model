@@ -1,9 +1,7 @@
-import argparse
-import sys
 from functools import wraps
 from typing import Any, Callable
 
-from .logger import log_error, log_info, setup_logging
+from .logger import setup_logging
 
 
 def with_logging(func: Callable) -> Callable:

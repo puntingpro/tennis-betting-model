@@ -1,7 +1,6 @@
 # main.py
 
 import argparse
-from pathlib import Path
 
 # --- MODIFIED: Imported the Elo builder main function ---
 from src.scripts.builders.consolidate_data import main as consolidate_data_main

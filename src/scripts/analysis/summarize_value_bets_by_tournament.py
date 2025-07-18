@@ -3,10 +3,10 @@
 from pathlib import Path
 import pandas as pd
 import argparse
-from typing import Dict, Optional
+from typing import Dict
 
 from src.scripts.utils.file_utils import load_dataframes
-from src.scripts.utils.logger import log_error, log_success, setup_logging
+from src.scripts.utils.logger import log_success, setup_logging
 from src.scripts.utils.config import load_config
 
 

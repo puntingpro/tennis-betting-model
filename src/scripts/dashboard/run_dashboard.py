@@ -201,7 +201,7 @@ def main():
             chart_data = simulation_df.set_index("tourney_date")
             if len(chart_data) > 5000:
                 st.info(
-                    f"💡 Displaying a resampled summary for performance. Full data is in the table below."
+                    "💡 Displaying a resampled summary for performance. Full data is in the table below."
                 )
                 chart_data = chart_data.resample("W").last()
             # --- END FIX ---

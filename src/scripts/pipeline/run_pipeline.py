@@ -1,8 +1,7 @@
 # src/scripts/pipeline/run_pipeline.py
 
-import pandas as pd
 import joblib
-from src.scripts.utils.logger import setup_logging, log_info, log_warning, log_success
+from src.scripts.utils.logger import setup_logging, log_info, log_warning
 from src.scripts.utils.config import load_config
 from src.scripts.utils.api import (
     login_to_betfair,
