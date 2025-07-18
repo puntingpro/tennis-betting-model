@@ -25,16 +25,6 @@ def train_advanced_model(
 ) -> Tuple[XGBClassifier, float, Dict[str, Any]]:
     """
     Trains an advanced XGBoost model with hyperparameter optimization using Optuna.
-
-    Args:
-        df (pd.DataFrame): The feature-engineered DataFrame for training.
-        random_state (int): The random state for reproducibility.
-        n_trials (int): The number of Optuna trials for hyperparameter search.
-        n_splits (int): The number of splits for cross-validation.
-
-    Returns:
-        Tuple[XGBClassifier, float, Dict[str, Any]]: A tuple containing the trained
-        model, the best cross-validated AUC score, and a dictionary of metadata.
     """
     df = validate_data(df, PlayerFeaturesSchema, "model_training_input")
 
@@ -97,11 +87,12 @@ def train_advanced_model(
             model = XGBClassifier(**param, use_label_encoder=False)
             pruning_callback = XGBoostPruningCallback(trial, "validation_0-logloss")
 
+            # FIX: The `early_stopping_rounds` parameter is now passed via the callbacks.
+            # The Optuna callback handles this automatically.
             model.fit(
                 X_train,
                 y_train,
                 eval_set=[(X_test, y_test)],
-                early_stopping_rounds=50,
                 verbose=False,
                 callbacks=[pruning_callback],
             )
