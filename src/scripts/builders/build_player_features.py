@@ -71,10 +71,8 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
     h2h_results = []
     df_sorted = df.sort_values(by="tourney_date")
     for row in tqdm(df_sorted.itertuples(), total=len(df), desc="H2H Calculation"):
-        # FIX: Ignore the strict mypy error for itertuples.
         p1_id, p2_id = int(row.p1_id), int(row.p2_id)  # type: ignore
 
-        # Be explicit about sorting the tuple to satisfy MyPy.
         player_pair: tuple[int, int] = (
             (p1_id, p2_id) if p1_id < p2_id else (p2_id, p1_id)
         )
@@ -88,7 +86,6 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
                 "h2h_p2_wins": p2_wins_vs_p1,
             }
         )
-        # FIX: Ignore the strict mypy error for itertuples.
         winner_id = int(row.winner_id)  # type: ignore
         h2h_records[player_pair][winner_id] += 1
     h2h_df = pd.DataFrame(h2h_results)
@@ -116,7 +113,6 @@ def main(args):
     df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
     df_rankings.dropna(subset=["ranking_date", "player"], inplace=True)
 
-    # Ensure these columns are integer types before processing.
     df_matches["winner_id"] = df_matches["winner_id"].astype("int64")
     df_matches["loser_id"] = df_matches["loser_id"].astype("int64")
     df_rankings["player"] = df_rankings["player"].astype("int64")
@@ -129,7 +125,6 @@ def main(args):
         )
     df_matches = df_matches.sort_values(by="tourney_date")
 
-    # --- BUG FIX: Randomly assign p1 and p2 to prevent data leakage ---
     log_info("Randomly assigning P1/P2 to prevent data leakage...")
     is_swapped = np.random.choice([True, False], size=len(df_matches))
 
@@ -141,7 +136,6 @@ def main(args):
     ].copy()
     features_df["p1_id"] = p1_ids
     features_df["p2_id"] = p2_ids
-    # --- END FIX ---
 
     log_info("Calculating player stats (vectorized)...")
     player_stats_df = calculate_player_stats(df_matches)
@@ -247,7 +241,7 @@ def main(args):
     features_df["rank_diff"] = features_df["p1_rank"] - features_df["p2_rank"]
     features_df["elo_diff"] = features_df["p1_elo"] - features_df["p2_elo"]
 
-    features_df = validate_data(features_df, PlayerFeaturesSchema(), "player_features")
+    features_df = validate_data(features_df, PlayerFeaturesSchema, "player_features")
 
     output_path = Path(paths["consolidated_features"])
     output_path.parent.mkdir(parents=True, exist_ok=True)

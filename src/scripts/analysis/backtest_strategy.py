@@ -27,7 +27,7 @@ def run_backtest(
     df = pd.read_csv(features_csv, low_memory=False, parse_dates=["tourney_date"])
 
     df = pd.DataFrame(
-        validate_data(df, PlayerFeaturesSchema(), "backtest_features_input")
+        validate_data(df, PlayerFeaturesSchema, "backtest_features_input")
     )
 
     # --- Prepare Data for Prediction ---
@@ -52,10 +52,7 @@ def run_backtest(
     # --- Make Predictions ---
     log_info("Making predictions on historical data...")
     df["p1_predicted_prob"] = model.predict_proba(X_historical)[:, 1]
-    # --- BUG FIX ---
-    # The probability for player 2 is 1 minus player 1's probability.
     df["p2_predicted_prob"] = 1 - df["p1_predicted_prob"]
-    # --- END FIX ---
 
     # --- Simulate Odds and finding value for both players ---
     log_info("Simulating odds and finding value for both players...")
@@ -86,10 +83,7 @@ def run_backtest(
     # Bets on player 2
     bets_p2 = df[base_cols + ["winner"]].copy()
     bets_p2["odds"] = df["p2_odds"]
-    # --- BUG FIX ---
-    # Use the correctly calculated p2_predicted_prob
     bets_p2["predicted_prob"] = df["p2_predicted_prob"]
-    # --- END FIX ---
     bets_p2["winner"] = 1 - bets_p2["winner"]  # Flip winner perspective for P2
 
     bets_p1 = add_ev_and_kelly(bets_p1, inplace=False)
@@ -104,7 +98,7 @@ def run_backtest(
 
     final_value_bets = pd.DataFrame(
         validate_data(
-            final_value_bets, BacktestResultsSchema(), "backtest_results_output"
+            final_value_bets, BacktestResultsSchema, "backtest_results_output"
         )
     )
 
@@ -118,16 +112,16 @@ def main(args):
     """
     Main function for backtesting, driven by the config file.
     """
-    setup_logging()  #
-    config = load_config(args.config)  #
-    paths = config["data_paths"]  #
-    betting_params = config["betting"]  #
+    setup_logging()
+    config = load_config(args.config)
+    paths = config["data_paths"]
+    betting_params = config["betting"]
 
     run_backtest(
-        model_path=paths["model"],  #
-        features_csv=paths["consolidated_features"],  #
-        output_csv=paths["backtest_results"],  #
-        ev_threshold=betting_params["ev_threshold"],  #
+        model_path=paths["model"],
+        features_csv=paths["consolidated_features"],
+        output_csv=paths["backtest_results"],
+        ev_threshold=betting_params["ev_threshold"],
     )
 
 

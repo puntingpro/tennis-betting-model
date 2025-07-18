@@ -3,6 +3,7 @@
 import pandas as pd
 import pandera as pa
 from pandera.typing import Series
+from typing import Type
 
 
 class RawMatchesSchema(pa.DataFrameModel):
@@ -77,7 +78,7 @@ class BacktestResultsSchema(pa.DataFrameModel):
 
 
 def validate_data(
-    df: pd.DataFrame, schema: pa.DataFrameModel, context: str
+    df: pd.DataFrame, schema: Type[pa.DataFrameModel], context: str
 ) -> pd.DataFrame:
     """
     Validates a DataFrame against a pandera schema, providing a clear context on error.
