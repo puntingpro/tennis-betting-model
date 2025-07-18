@@ -21,4 +21,4 @@ black==23.12.1
 mypy
 pytest
 pytest-cov
-ruff
+ruff==0.12.4
