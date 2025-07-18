@@ -23,3 +23,8 @@ pre-commit
 pytest
 pytest-cov
 ruff==0.12.4
+# Type Stubs for MyPy
+pandas-stubs
+types-PyYAML
+types-requests
+types-tqdm

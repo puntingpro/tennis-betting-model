@@ -30,7 +30,7 @@ def generate_elo_ratings(df: pd.DataFrame) -> pd.DataFrame:
     """
     log_info("Generating historical Elo ratings for all players...")
 
-    elo_ratings = {}
+    elo_ratings: dict[int, float] = {}
     elo_history = []
 
     # Sort matches chronologically to process them in order

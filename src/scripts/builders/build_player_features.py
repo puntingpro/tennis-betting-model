@@ -65,7 +65,9 @@ def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
 def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
     """Calculates point-in-time Head-to-Head (H2H) stats."""
     log_info("Calculating Head-to-Head (H2H) stats...")
-    h2h_records = defaultdict(lambda: defaultdict(int))
+    h2h_records: defaultdict[tuple[int, int], defaultdict[int, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
     h2h_results = []
     df_sorted = df.sort_values(by="tourney_date")
     for row in tqdm(df_sorted.itertuples(), total=len(df), desc="H2H Calculation"):
@@ -237,7 +239,7 @@ def main(args):
     features_df["rank_diff"] = features_df["p1_rank"] - features_df["p2_rank"]
     features_df["elo_diff"] = features_df["p1_elo"] - features_df["p2_elo"]
 
-    features_df = validate_data(features_df, PlayerFeaturesSchema, "player_features")
+    features_df = validate_data(features_df, PlayerFeaturesSchema(), "player_features")
 
     output_path = Path(paths["consolidated_features"])
     output_path.parent.mkdir(parents=True, exist_ok=True)

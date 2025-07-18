@@ -36,7 +36,7 @@ def train_advanced_model(
         Tuple[XGBClassifier, float, Dict[str, Any]]: A tuple containing the trained
         model, the best cross-validated AUC score, and a dictionary of metadata.
     """
-    df = validate_data(df, PlayerFeaturesSchema, "model_training_input")
+    df = validate_data(df, PlayerFeaturesSchema(), "model_training_input")
 
     log_info("Creating a balanced dataset by flipping player perspectives...")
     df_loser = df.copy()
