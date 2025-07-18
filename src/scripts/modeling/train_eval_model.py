@@ -86,13 +86,12 @@ def train_advanced_model(
             y_train, y_test = y.iloc[train_index], y.iloc[test_index]
 
             model = XGBClassifier(**param, use_label_encoder=False)
+
+            # FIX: The pruning_callback is now created and used in the same line.
+            # The EarlyStopping callback is also created here to align with the modern API.
+            early_stopping = EarlyStopping(rounds=50, save_best=True)
             pruning_callback = XGBoostPruningCallback(trial, "validation_0-logloss")
 
-            # FIX: Create an EarlyStopping callback instance.
-            early_stopping = EarlyStopping(rounds=50, save_best=True)
-
-            # FIX: Pass both the pruner and early stopping to the `callbacks` list
-            # and remove the old early_stopping_rounds parameter.
             model.fit(
                 X_train,
                 y_train,
