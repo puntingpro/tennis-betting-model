@@ -1,6 +1,8 @@
 import logging
 import sys
 
+from pythonjsonlogger import jsonlogger
+
 
 def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
     """Configure the root logger for the application."""
