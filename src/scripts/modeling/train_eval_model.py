@@ -91,7 +91,8 @@ def train_advanced_model(
             # FIX: Create an EarlyStopping callback instance.
             early_stopping = EarlyStopping(rounds=50, save_best=True)
 
-            # FIX: Pass both the pruner and early stopping to the `callbacks` list.
+            # FIX: Pass both the pruner and early stopping to the `callbacks` list
+            # and remove the old early_stopping_rounds parameter.
             model.fit(
                 X_train,
                 y_train,
