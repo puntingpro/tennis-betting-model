@@ -37,8 +37,8 @@ def generate_elo_ratings(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(by="tourney_date").reset_index(drop=True)
 
     for row in tqdm(df.itertuples(), total=len(df), desc="Calculating Elo"):
-        winner_id = row.winner_id
-        loser_id = row.loser_id
+        winner_id = int(row.winner_id)
+        loser_id = int(row.loser_id)
 
         # Get the current ratings, defaulting to the initial rating if a player is new
         winner_elo = elo_ratings.get(winner_id, ELO_INITIAL_RATING)

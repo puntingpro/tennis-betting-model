@@ -71,7 +71,7 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
     h2h_results = []
     df_sorted = df.sort_values(by="tourney_date")
     for row in tqdm(df_sorted.itertuples(), total=len(df), desc="H2H Calculation"):
-        p1_id, p2_id = row.p1_id, row.p2_id
+        p1_id, p2_id = int(row.p1_id), int(row.p2_id)
         player_pair = tuple(sorted((p1_id, p2_id)))
         p1_wins_vs_p2 = h2h_records[player_pair][p1_id]
         p2_wins_vs_p1 = h2h_records[player_pair][p2_id]
@@ -82,7 +82,7 @@ def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
                 "h2h_p2_wins": p2_wins_vs_p1,
             }
         )
-        winner_id = row.winner_id
+        winner_id = int(row.winner_id)
         h2h_records[player_pair][winner_id] += 1
     h2h_df = pd.DataFrame(h2h_results)
     return pd.merge(df, h2h_df, on="match_id", how="left")

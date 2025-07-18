@@ -14,7 +14,7 @@ def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
 
     # Force the handler to use UTF-8 encoding to prevent UnicodeEncodeError on Windows
     # when piping output to a file.
-    handler.stream.reconfigure(encoding="utf-8")
+    handler.stream.reconfigure(encoding="utf-8")  # type: ignore
 
     # Configure the root logger
     logging.basicConfig(level=log_level, handlers=[handler], force=True)
