@@ -14,7 +14,7 @@ schedule
 scikit-learn
 seaborn
 streamlit
-xgboost
+xgboost<2.0.0
 
 # --- Development & Linting Tools ---
 black==23.12.1
