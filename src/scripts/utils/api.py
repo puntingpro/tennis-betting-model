@@ -121,7 +121,7 @@ def get_live_match_odds(
                 log_error(
                     "❌ All API attempts failed. Returning empty data for this run."
                 )
-                return [], {}
+    return [], {}
 
 
 def place_bet(

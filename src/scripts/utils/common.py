@@ -22,7 +22,7 @@ def get_most_recent_ranking(
         player_rankings["ranking_date"].searchsorted(date, side="right") - 1
     )
     if last_ranking_idx >= 0:
-        return player_rankings.iloc[last_ranking_idx]["rank"]
+        return float(player_rankings.iloc[last_ranking_idx]["rank"])
     return np.nan
 
 

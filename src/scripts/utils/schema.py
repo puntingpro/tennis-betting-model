@@ -2,7 +2,7 @@
 
 import pandas as pd
 import pandera as pa
-from pandera.typing import DataFrame, Series
+from pandera.typing import Series
 
 
 # --- MODIFIED: Use the more compatible pa.DataFrameModel ---
@@ -76,7 +76,7 @@ class BacktestResultsSchema(pa.DataFrameModel):
 
 def validate_data(
     df: pd.DataFrame, schema: pa.DataFrameModel, context: str
-) -> DataFrame:
+) -> pd.DataFrame:
     """
     Validates a DataFrame against a pandera schema, providing a clear context on error.
     """
@@ -84,7 +84,7 @@ def validate_data(
         print(f"Validating schema for: {context}...")
         validated_df = schema.validate(df, lazy=True)
         print(f"✅ Schema validation successful for: {context}")
-        return validated_df
+        return pd.DataFrame(validated_df)
     except pa.errors.SchemaErrors as err:
         print(f"❌ Schema validation failed for: {context}")
         print("Failure cases:")

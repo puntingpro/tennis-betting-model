@@ -26,7 +26,9 @@ def run_backtest(
     log_info(f"Loading historical features from {features_csv}...")
     df = pd.read_csv(features_csv, low_memory=False, parse_dates=["tourney_date"])
 
-    df = validate_data(df, PlayerFeaturesSchema(), "backtest_features_input")
+    df = pd.DataFrame(
+        validate_data(df, PlayerFeaturesSchema(), "backtest_features_input")
+    )
 
     # --- Prepare Data for Prediction ---
     df_predict = df.copy()
@@ -100,8 +102,10 @@ def run_backtest(
 
     log_success(f"Found {len(final_value_bets)} total historical value bets.")
 
-    final_value_bets = validate_data(
-        final_value_bets, BacktestResultsSchema(), "backtest_results_output"
+    final_value_bets = pd.DataFrame(
+        validate_data(
+            final_value_bets, BacktestResultsSchema(), "backtest_results_output"
+        )
     )
 
     output_path = Path(output_csv)

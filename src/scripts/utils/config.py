@@ -21,4 +21,4 @@ def load_config(config_path: str) -> Dict[str, Any]:
     if not p.exists():
         raise FileNotFoundError(f"Config file not found at: {config_path}")
     with p.open("r") as f:
-        return yaml.safe_load(f)
+        return dict(yaml.safe_load(f))

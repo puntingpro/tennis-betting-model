@@ -109,14 +109,16 @@ def train_advanced_model(
             y_prob = model.predict_proba(X_test)[:, 1]
             scores.append(roc_auc_score(y_test, y_prob))
 
-        return np.mean(scores)
+        return float(np.mean(scores))
 
     study = optuna.create_study(
         direction="maximize", pruner=optuna.pruners.MedianPruner()
     )
     study.optimize(objective, n_trials=n_trials, n_jobs=-1)
 
-    log_info(f"Best trial average AUC: {study.best_trial.value:.4f}")
+    best_value = study.best_trial.value if study.best_trial.value is not None else 0.0
+
+    log_info(f"Best trial average AUC: {best_value:.4f}")
     log_info(f"Best params: {study.best_params}")
 
     log_info("Training final model on the entire dataset with the best parameters...")
@@ -133,10 +135,10 @@ def train_advanced_model(
         "features": features,
         "feature_importances": final_model.feature_importances_.tolist(),
         "train_rows": len(X),
-        "cross_val_auc": study.best_trial.value,
+        "cross_val_auc": best_value,
         "best_params": study.best_params,
     }
-    return final_model, study.best_trial.value, meta
+    return final_model, best_value, meta
 
 
 def main_cli(args: argparse.Namespace) -> None:
