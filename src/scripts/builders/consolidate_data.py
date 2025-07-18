@@ -25,7 +25,7 @@ def consolidate_data(input_glob: str, output_path: Path) -> None:
 
     # --- BUG FIX: Added more specific logic to handle 'qual_chall' files correctly ---
     exclude_keywords = ["doubles", "qual", "amateur"]
-    
+
     csv_files = []
     for f in all_files:
         filename_stem = Path(f).stem

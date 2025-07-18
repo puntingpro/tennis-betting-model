@@ -16,10 +16,24 @@ def test_process_markets_identifies_value_bet():
     mock_model = MagicMock()
     mock_model.predict_proba.return_value = [[0.4, 0.6]]
     mock_model.feature_names_in_ = [
-        "p1_rank", "p2_rank", "rank_diff", "p1_height", "p2_height",
-        "h2h_p1_wins", "h2h_p2_wins", "h2h_win_perc_p1", "p1_win_perc",
-        "p2_win_perc", "p1_surface_win_perc", "p2_surface_win_perc",
-        "p1_hand_L", "p1_hand_R", "p1_hand_U", "p2_hand_L", "p2_hand_R", "p2_hand_U",
+        "p1_rank",
+        "p2_rank",
+        "rank_diff",
+        "p1_height",
+        "p2_height",
+        "h2h_p1_wins",
+        "h2h_p2_wins",
+        "h2h_win_perc_p1",
+        "p1_win_perc",
+        "p2_win_perc",
+        "p1_surface_win_perc",
+        "p2_surface_win_perc",
+        "p1_hand_L",
+        "p1_hand_R",
+        "p1_hand_U",
+        "p2_hand_L",
+        "p2_hand_R",
+        "p2_hand_U",
     ]
 
     mock_market = MagicMock()
@@ -47,19 +61,23 @@ def test_process_markets_identifies_value_bet():
 
     # --- BUG FIX ---
     # The lists for creating the DataFrame must all be the same length.
-    mock_df_rankings = pd.DataFrame({
-        "ranking_date": pd.to_datetime(["2023-01-01", "2023-01-01"], utc=True),
-        "player": [101, 102],
-        "rank": [10.0, 25.0],
-    }).sort_values(by="ranking_date")
+    mock_df_rankings = pd.DataFrame(
+        {
+            "ranking_date": pd.to_datetime(["2023-01-01", "2023-01-01"], utc=True),
+            "player": [101, 102],
+            "rank": [10.0, 25.0],
+        }
+    ).sort_values(by="ranking_date")
     # --- END FIX ---
 
-    mock_df_matches = pd.DataFrame({
-        "tourney_date": pd.to_datetime(["2022-01-01"], utc=True),
-        "surface": ["Hard"],
-        "winner_id": [101],
-        "loser_id": [102],
-    })
+    mock_df_matches = pd.DataFrame(
+        {
+            "tourney_date": pd.to_datetime(["2022-01-01"], utc=True),
+            "surface": ["Hard"],
+            "winner_id": [101],
+            "loser_id": [102],
+        }
+    )
 
     mock_betting_config = {"ev_threshold": 0.1}
 

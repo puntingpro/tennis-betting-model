@@ -68,24 +68,26 @@ def run_pipeline_once(config: dict, dry_run: bool):
         if not value_bets:
             log_info("--- No Value Bets Found in This Run ---")
             return
-            
+
         if dry_run:
             log_info("Value bets found and alerted in DRY-RUN mode.")
             return
 
-        log_warning(f"Found {len(value_bets)} value bets. Attempting to place live bets...")
+        log_warning(
+            f"Found {len(value_bets)} value bets. Attempting to place live bets..."
+        )
         for bet in value_bets:
             # Calculate stake using the Kelly Criterion fraction from the value_finder
             # You might want to add your own logic here to cap the kelly fraction
-            kelly_fraction = float(bet.get('kelly_fraction', 0.0))
+            kelly_fraction = float(bet.get("kelly_fraction", 0.0))
             stake_to_place = bankroll * kelly_fraction
 
             place_bet(
                 trading=trading,
-                market_id=bet['market_id'],
-                selection_id=int(bet['selection_id']),
-                price=float(bet['odds']),
-                stake=stake_to_place
+                market_id=bet["market_id"],
+                selection_id=int(bet["selection_id"]),
+                price=float(bet["odds"]),
+                stake=stake_to_place,
             )
 
     finally:

@@ -108,7 +108,7 @@ def main(args):
     )
     df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
     df_rankings.dropna(subset=["ranking_date", "player"], inplace=True)
-    
+
     df_matches["winner_id"] = df_matches["winner_id"].astype("int64")
     df_matches["loser_id"] = df_matches["loser_id"].astype("int64")
     df_rankings["player"] = df_rankings["player"].astype("int64")
@@ -120,25 +120,29 @@ def main(args):
             + df_matches["match_num"].astype(str)
         )
     df_matches = df_matches.sort_values(by="tourney_date")
-    
+
     # --- BUG FIX: Randomly assign p1 and p2 to prevent data leakage ---
     log_info("Randomly assigning P1/P2 to prevent data leakage...")
     is_swapped = np.random.choice([True, False], size=len(df_matches))
-    
-    p1_ids = np.where(is_swapped, df_matches['loser_id'], df_matches['winner_id'])
-    p2_ids = np.where(is_swapped, df_matches['winner_id'], df_matches['loser_id'])
-    
-    features_df = df_matches[["match_id", "tourney_date", "tourney_name", "surface", "winner_id"]].copy()
-    features_df['p1_id'] = p1_ids
-    features_df['p2_id'] = p2_ids
+
+    p1_ids = np.where(is_swapped, df_matches["loser_id"], df_matches["winner_id"])
+    p2_ids = np.where(is_swapped, df_matches["winner_id"], df_matches["loser_id"])
+
+    features_df = df_matches[
+        ["match_id", "tourney_date", "tourney_name", "surface", "winner_id"]
+    ].copy()
+    features_df["p1_id"] = p1_ids
+    features_df["p2_id"] = p2_ids
     # --- END FIX ---
-    
+
     log_info("Calculating player stats (vectorized)...")
     player_stats_df = calculate_player_stats(df_matches)
 
     log_info("Merging stats and building final feature set...")
     features_df = add_h2h_stats(features_df)
-    features_df["winner"] = (features_df["p1_id"] == features_df["winner_id"]).astype(int)
+    features_df["winner"] = (features_df["p1_id"] == features_df["winner_id"]).astype(
+        int
+    )
     features_df = features_df.drop(columns=["winner_id"])
 
     log_info("Merging Elo ratings...")
@@ -149,11 +153,19 @@ def main(args):
         right_on=["match_id"],
         how="left",
     )
-    
-    features_df["p1_elo"] = np.where(features_df['p1_id'] == features_df['p1_id_elo'], features_df['p1_elo'], features_df['p2_elo'])
-    features_df["p2_elo"] = np.where(features_df['p2_id'] == features_df['p2_id_elo'], features_df['p2_elo'], features_df['p1_elo'])
+
+    features_df["p1_elo"] = np.where(
+        features_df["p1_id"] == features_df["p1_id_elo"],
+        features_df["p1_elo"],
+        features_df["p2_elo"],
+    )
+    features_df["p2_elo"] = np.where(
+        features_df["p2_id"] == features_df["p2_id_elo"],
+        features_df["p2_elo"],
+        features_df["p1_elo"],
+    )
     features_df.drop(columns=["p1_id_elo", "p2_id_elo"], inplace=True)
-    
+
     features_df["p1_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
     features_df["p2_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
 
