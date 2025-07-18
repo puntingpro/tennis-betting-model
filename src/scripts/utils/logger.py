@@ -5,9 +5,7 @@ from pythonjsonlogger import jsonlogger
 
 
 def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
-    """
-    Configure the root logger for the application.
-    """
+    """Configure the root logger for the application."""
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     log_level = getattr(logging, level.upper(), logging.INFO)
 
