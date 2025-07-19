@@ -1,51 +1,55 @@
-name: Python CI
+# .github/workflows/ci.yml
+
+name: build-and-test
 
 on:
   push:
     branches:
       - main
-      - 'releases/**'
   pull_request:
+    branches:
+      - main
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out code
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          repository: puntingpro/P1v2
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: pip
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Create Betfair certs
+        run: |
+          mkdir -p certs
+          echo "${{ secrets.BETFAIR_KEY }}" > certs/client-2048.key
+          echo "${{ secrets.BETFAIR_CRT }}" > certs/client-2048.crt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # FIX: Add this step to install the project itself
-      - name: Install project in editable mode
+      - name: Install project
         run: pip install -e .
 
-      - name: Lint with Black
-        run: black --check src main.py tests
-
-      - name: Lint with Ruff
-        run: ruff check src main.py tests
-
-      - name: Type-check with MyPy
-        run: mypy src main.py tests
+      - name: Run linters
+        run: |
+          black --check src main.py tests
+          ruff check src main.py tests
+          mypy src main.py tests
 
       - name: Run tests and report coverage
         # FIX: Removed PYTHONPATH=src from the command
-        run: |
-          pytest --cov=src --cov-report=xml --maxfail=1 --disable-warnings -q
+        run: pytest --cov=src --cov-report=xml --maxfail=1 --disable-warnings -q
 
-      - name: Upload coverage to Codecov
+      - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
