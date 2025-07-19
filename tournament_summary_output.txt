@@ -1,0 +1,11 @@
+2025-07-15 18:04:00,944 - root - INFO - Γ£à Γ£à Successfully summarized tournaments by category.
+
+--- Tournament Category Performance (min_bets=100) ---
+  tourney_category  total_bets  total_profit         roi
+4       Team Event        6127  41036.919692  669.771825
+0   ATP / WTA Tour       38564  65356.883510  169.476412
+1       Grand Slam       12176  17610.112417  144.629701
+5      Tour Finals         253    313.960188  124.094936
+2     Masters 1000       14006  14420.042795  102.956182
+3         Olympics         440    417.586816   94.906095
+2025-07-15 18:04:00,955 - root - INFO - Γ£à Γ£à Saved summary data to data\analysis\tournament_summary.csv

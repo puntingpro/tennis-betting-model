@@ -1,49 +1,109 @@
-# ─── Python artifacts ────────────────────────────────────────────────────────────
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.egg-info/
+*$py.class
 
-# ─── Virtual environments ────────────────────────────────────────────────────────
-.venv/
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environments
+.env
+.venv
+env/
 venv/
 ENV/
+env.bak
+venv.bak
 
-# ─── Data & dumps ────────────────────────────────────────────────────────────────
-# ignore all data folders at once
+# PuntingPro v2 specific
+# =======================
+
+# Data files - Ignore raw data, processed data, and specific CSVs
 data/
-parsed/
+tennis_data.csv
 
-# also ignore any compressed dumps
-*.bz2
+# Ignore large data archives
+*.tar
 
-# ─── Model artifacts ─────────────────────────────────────────────────────────────
+# Ignore trained models
 models/
-rf_model.json
 
-# ─── Logs and other generated files ─────────────────────────────────────
+# Ignore generated plots and reports
+*.png
+*.csv
+
+# Ignore log files
 *.log
-*.txt
-config.yaml # Exclude configuration file
-
-# ─── OS‐specific and IDE settings ───────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# ─── (Optional extras) ──────────────────────────────────────────────────────────
-# Byte-compiled / optimized files
-*.pyc
-*.pyo
-*.pyd
-
-# Backup / swap files
-*~
-*.swp
-
-# --- CORRECTED LINES ---
-# This ensures requirements.txt is NOT ignored, but the certs directory IS.
-!requirements.txt
-certs/
-gha-betfair.crt
-gha-betfair.key
+logs/
