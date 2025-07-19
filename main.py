@@ -3,24 +3,24 @@
 import argparse
 
 # --- MODIFIED: Imported the Elo builder main function ---
-from src.scripts.builders.consolidate_data import main as consolidate_data_main
-from src.scripts.builders.consolidate_rankings import main as consolidate_rankings_main
-from src.scripts.builders.build_elo_ratings import main as build_elo_ratings_main
-from src.scripts.builders.build_player_features import main as build_features_main
+from scripts.builders.consolidate_data import main as consolidate_data_main
+from scripts.builders.consolidate_rankings import main as consolidate_rankings_main
+from scripts.builders.build_elo_ratings import main as build_elo_ratings_main
+from scripts.builders.build_player_features import main as build_features_main
 
 # --- END MODIFICATION ---
 
-from src.scripts.modeling.train_eval_model import main_cli as train_model_main
-from src.scripts.pipeline.run_pipeline import main as pipeline_main
-from src.scripts.analysis.backtest_strategy import main as backtest_main
-from src.scripts.analysis.summarize_value_bets_by_tournament import (
+from scripts.modeling.train_eval_model import main_cli as train_model_main
+from scripts.pipeline.run_pipeline import main as pipeline_main
+from scripts.analysis.backtest_strategy import main as backtest_main
+from scripts.analysis.summarize_value_bets_by_tournament import (
     main_cli as summarize_tournaments_main,
 )
-from src.scripts.analysis.plot_tournament_leaderboard import (
+from scripts.analysis.plot_tournament_leaderboard import (
     main_cli as plot_leaderboard_main,
 )
-from src.scripts.utils.logger import setup_logging
-from src.scripts.pipeline.run_automation import main as automation_main
+from scripts.utils.logger import setup_logging
+from scripts.pipeline.run_automation import main as automation_main
 
 
 def consolidate_main(args):

@@ -4,9 +4,9 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 
-from src.scripts.utils.config import load_config
-from src.scripts.utils.logger import setup_logging, log_info, log_success
-from src.scripts.utils.constants import ELO_K_FACTOR, ELO_INITIAL_RATING
+from scripts.utils.config import load_config
+from scripts.utils.logger import setup_logging, log_info, log_success
+from scripts.utils.constants import ELO_K_FACTOR, ELO_INITIAL_RATING
 
 
 def calculate_expected_score(rating1, rating2):

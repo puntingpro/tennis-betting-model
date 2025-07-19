@@ -5,9 +5,9 @@ import pandas as pd
 import argparse
 from typing import Dict
 
-from src.scripts.utils.file_utils import load_dataframes
-from src.scripts.utils.logger import log_success, setup_logging
-from src.scripts.utils.config import load_config
+from scripts.utils.file_utils import load_dataframes
+from scripts.utils.logger import log_success, setup_logging
+from scripts.utils.config import load_config
 
 
 def get_tournament_category(tourney_name: str) -> str:

@@ -3,26 +3,7 @@
 import pandas as pd
 import pandera as pa
 from pandera.typing import Series
-from typing import Type
-
-
-class RawMatchesSchema(pa.DataFrameModel):
-    """
-    Schema for the raw consolidated match data before feature engineering.
-    Ensures that essential columns are present and have the correct data type.
-    """
-
-    # FIX: Use pa.DateTime for mypy and ignore the pylance error.
-    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)  # pyright: ignore
-    tourney_name: Series[str] = pa.Field(nullable=True)
-    surface: Series[str] = pa.Field(nullable=True)
-    match_num: Series[int] = pa.Field(coerce=True)
-    winner_id: Series[int] = pa.Field(coerce=True)
-    loser_id: Series[int] = pa.Field(coerce=True)
-
-    class Config:
-        strict = False
-        coerce = True
+from typing import cast
 
 
 class PlayerFeaturesSchema(pa.DataFrameModel):
@@ -32,7 +13,6 @@ class PlayerFeaturesSchema(pa.DataFrameModel):
     """
 
     match_id: Series[str] = pa.Field(nullable=False)
-    # FIX: Use pa.DateTime for mypy and ignore the pylance error.
     tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)  # pyright: ignore
     surface: Series[str] = pa.Field(nullable=True)
     p1_id: Series[int] = pa.Field(coerce=True)
@@ -55,41 +35,38 @@ class PlayerFeaturesSchema(pa.DataFrameModel):
         coerce = True
 
 
-class BacktestResultsSchema(pa.DataFrameModel):
-    """
-    Schema for the output of the backtest_strategy.py script.
-    Ensures the results have the expected columns and data types before analysis.
-    """
-
-    match_id: Series[str] = pa.Field(nullable=False)
-    tourney_name: Series[str] = pa.Field(nullable=True)
-    # FIX: Use pa.DateTime for mypy and ignore the pylance error.
-    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)  # pyright: ignore
-    odds: Series[float] = pa.Field(gt=1)
-    predicted_prob: Series[float] = pa.Field(ge=0, le=1)
-    winner: Series[int] = pa.Field(isin=[0, 1])
-    expected_value: Series[float] = pa.Field()
-    # --- MODIFIED: Added nullable=False constraint ---
-    kelly_fraction: Series[float] = pa.Field(nullable=False)
-
-    class Config:
-        strict = True
-        coerce = True
+SCHEMA_REGISTRY = {
+    "model_training_input": PlayerFeaturesSchema,
+    "player_features": PlayerFeaturesSchema,
+}
 
 
-def validate_data(
-    df: pd.DataFrame, schema: Type[pa.DataFrameModel], context: str
-) -> pd.DataFrame:
+def validate_data(df: pd.DataFrame, schema_name: str) -> pd.DataFrame:
     """
-    Validates a DataFrame against a pandera schema, providing a clear context on error.
+    Validates a DataFrame against a specified schema from the registry.
+
+    Args:
+        df: The DataFrame to validate.
+        schema_name: The name of the schema to use for validation.
+
+    Returns:
+        The validated DataFrame.
+
+    Raises:
+        ValueError: If the schema name is not found in the registry.
+        pa.errors.SchemaErrors: If the DataFrame fails validation.
     """
+    if schema_name not in SCHEMA_REGISTRY:
+        raise ValueError(f"Schema '{schema_name}' not found in registry.")
+
+    schema = SCHEMA_REGISTRY[schema_name]
     try:
-        print(f"Validating schema for: {context}...")
+        print(f"Validating schema for: {schema_name}...")
         validated_df = schema.validate(df, lazy=True)
-        print(f"✅ Schema validation successful for: {context}")
-        return pd.DataFrame(validated_df)
+        print(f"✅ Schema validation successful for: {schema_name}")
+        return cast(pd.DataFrame, validated_df)
     except pa.errors.SchemaErrors as err:
-        print(f"❌ Schema validation failed for: {context}")
+        print(f"❌ Schema validation failed for: {schema_name}")
         print("Failure cases:")
         print(err.failure_cases)
         raise

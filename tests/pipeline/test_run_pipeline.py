@@ -3,7 +3,7 @@
 import pandas as pd
 from unittest.mock import MagicMock
 
-from src.scripts.pipeline.value_finder import process_markets
+from scripts.pipeline.value_finder import process_markets
 
 
 def test_process_markets_identifies_value_bet():

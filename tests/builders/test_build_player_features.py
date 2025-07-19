@@ -1,7 +1,7 @@
 # tests/builders/test_build_player_features.py
 import pandas as pd
 import pytest
-from src.scripts.builders.build_player_features import (
+from scripts.builders.build_player_features import (
     calculate_player_stats,
     add_h2h_stats,
 )

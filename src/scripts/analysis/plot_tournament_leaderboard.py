@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import argparse
 
-from src.scripts.utils.logger import log_error, log_success, setup_logging
-from src.scripts.utils.config import load_config
+from scripts.utils.logger import log_error, log_success, setup_logging
+from scripts.utils.config import load_config
 
 
 def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):

@@ -5,15 +5,15 @@ import pandas as pd
 import argparse
 import numpy as np
 
-from src.scripts.utils.logger import log_info, log_success, setup_logging
-from src.scripts.utils.betting_math import add_ev_and_kelly
-from src.scripts.utils.config import load_config
-from src.scripts.utils.schema import (
+from scripts.utils.logger import log_info, log_success, setup_logging
+from scripts.utils.betting_math import add_ev_and_kelly
+from scripts.utils.config import load_config
+from scripts.utils.schema import (
     validate_data,
     PlayerFeaturesSchema,
     BacktestResultsSchema,
 )
-from src.scripts.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
+from scripts.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
 
 
 def run_backtest(

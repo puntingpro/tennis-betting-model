@@ -7,10 +7,10 @@ from tqdm import tqdm
 import numpy as np
 import argparse
 
-from src.scripts.utils.config import load_config
-from src.scripts.utils.logger import setup_logging, log_info, log_success
-from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
-from src.scripts.utils.constants import DEFAULT_PLAYER_RANK, ELO_INITIAL_RATING
+from scripts.utils.config import load_config
+from scripts.utils.logger import setup_logging, log_info, log_success
+from scripts.utils.schema import validate_data, PlayerFeaturesSchema
+from scripts.utils.constants import DEFAULT_PLAYER_RANK, ELO_INITIAL_RATING
 
 
 def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:

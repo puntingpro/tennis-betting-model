@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from xgboost import XGBClassifier
 
-from src.scripts.modeling.train_eval_model import train_advanced_model
+from scripts.modeling.train_eval_model import train_advanced_model
 
 
 @pytest.fixture

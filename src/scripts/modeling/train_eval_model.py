@@ -10,15 +10,15 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
-from xgboost.callback import EarlyStopping  # FIX: Import the EarlyStopping callback
+from xgboost.callback import EarlyStopping
 import optuna
 from optuna.integration import XGBoostPruningCallback
 from typing import Tuple, Dict, Any, List
 
-from src.scripts.utils.git_utils import get_git_hash
-from src.scripts.utils.logger import log_info, log_success, setup_logging
-from src.scripts.utils.config import load_config
-from src.scripts.utils.schema import validate_data, PlayerFeaturesSchema
+from scripts.utils.git_utils import get_git_hash
+from scripts.utils.logger import log_info, log_success, setup_logging
+from scripts.utils.config import load_config
+from scripts.utils.schema import validate_data
 
 
 def train_advanced_model(
@@ -27,7 +27,7 @@ def train_advanced_model(
     """
     Trains an advanced XGBoost model with hyperparameter optimization using Optuna.
     """
-    df = validate_data(df, PlayerFeaturesSchema, "model_training_input")
+    df = validate_data(df, "model_training_input")
 
     log_info("Creating a balanced dataset by flipping player perspectives...")
     df_loser = df.copy()
@@ -81,24 +81,32 @@ def train_advanced_model(
             n_splits=n_splits, shuffle=True, random_state=random_state
         )
 
-        for train_index, test_index in skf.split(X, y):
+        for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
             X_train, X_test = X.iloc[train_index], X.iloc[test_index]
             y_train, y_test = y.iloc[train_index], y.iloc[test_index]
 
-            model = XGBClassifier(**param, use_label_encoder=False)
-
-            # FIX: The pruning_callback is now created and used in the same line.
-            # The EarlyStopping callback is also created here to align with the modern API.
             early_stopping = EarlyStopping(rounds=50, save_best=True)
-            pruning_callback = XGBoostPruningCallback(trial, "validation_0-logloss")
+
+            pruning_callback = (
+                XGBoostPruningCallback(trial, "validation_0-logloss")
+                if fold == 0
+                else None
+            )
+
+            callbacks = [early_stopping]
+            if pruning_callback:
+                callbacks.append(pruning_callback)
+
+            # --- FIX: Move callbacks to the constructor ---
+            model = XGBClassifier(**param, use_label_encoder=False, callbacks=callbacks)
 
             model.fit(
                 X_train,
                 y_train,
                 eval_set=[(X_test, y_test)],
                 verbose=False,
-                callbacks=[pruning_callback, early_stopping],
             )
+            # --- END FIX ---
 
             y_prob = model.predict_proba(X_test)[:, 1]
             scores.append(roc_auc_score(y_test, y_prob))
@@ -162,7 +170,6 @@ def main_cli(args: argparse.Namespace) -> None:
     joblib.dump(model, output_path)
     log_success(f"Saved model to {output_path}")
 
-    # Save metadata to a JSON file with the same name as the model
     meta_path = output_path.with_suffix(".json")
     with meta_path.open("w") as f:
         json.dump(meta, f, indent=2)

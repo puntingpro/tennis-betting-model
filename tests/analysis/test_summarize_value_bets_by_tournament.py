@@ -2,7 +2,7 @@
 
 import pandas as pd
 import pytest
-from src.scripts.analysis.summarize_value_bets_by_tournament import (
+from scripts.analysis.summarize_value_bets_by_tournament import (
     run_summarize_by_tournament,
 )
 

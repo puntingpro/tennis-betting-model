@@ -1,16 +1,16 @@
 # src/scripts/pipeline/run_pipeline.py
 
 import joblib
-from src.scripts.utils.logger import setup_logging, log_info, log_warning
-from src.scripts.utils.config import load_config
-from src.scripts.utils.api import (
+from scripts.utils.logger import setup_logging, log_info, log_warning
+from scripts.utils.config import load_config
+from scripts.utils.api import (
     login_to_betfair,
     get_tennis_competitions,
     get_live_match_odds,
     place_bet,
 )
-from src.scripts.utils.data_loader import load_pipeline_data
-from src.scripts.pipeline.value_finder import process_markets
+from scripts.utils.data_loader import load_pipeline_data
+from scripts.pipeline.value_finder import process_markets
 
 
 def run_pipeline_once(config: dict, dry_run: bool):

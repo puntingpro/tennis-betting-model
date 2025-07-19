@@ -7,8 +7,8 @@ import numpy as np
 from pathlib import Path
 from typing import Dict
 
-from src.scripts.utils.config import load_config
-from src.scripts.pipeline.simulate_bankroll_growth import (
+from scripts.utils.config import load_config
+from scripts.pipeline.simulate_bankroll_growth import (
     simulate_bankroll_growth,
     calculate_max_drawdown,
 )

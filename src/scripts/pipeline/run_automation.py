@@ -3,9 +3,9 @@
 import time
 import schedule
 from datetime import datetime
-from src.scripts.utils.logger import setup_logging, log_info
-from src.scripts.utils.config import load_config
-from src.scripts.pipeline.run_pipeline import run_pipeline_once
+from scripts.utils.logger import setup_logging, log_info
+from scripts.utils.config import load_config
+from scripts.pipeline.run_pipeline import run_pipeline_once
 
 
 def job():

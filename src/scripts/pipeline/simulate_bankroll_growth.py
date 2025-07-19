@@ -2,8 +2,8 @@
 
 import pandas as pd
 
-from src.scripts.utils.logger import log_info, log_warning
-from src.scripts.utils.common import normalize_columns, patch_winner_column
+from scripts.utils.logger import log_info, log_warning
+from scripts.utils.common import normalize_columns, patch_winner_column
 
 MAX_KELLY_STAKE_FRACTION = 0.1  # Cap stakes at 10% of the bankroll
 MAX_PROFIT_PER_BET = 10000.0  # Cap profit on any single bet to $10,000

@@ -2,13 +2,13 @@
 
 import pandas as pd
 from decimal import Decimal
-from src.scripts.utils.logger import log_info, log_success
-from src.scripts.utils.common import get_most_recent_ranking
-from src.scripts.pipeline.feature_engineering import (
+from scripts.utils.logger import log_info, log_success
+from scripts.utils.common import get_most_recent_ranking
+from scripts.pipeline.feature_engineering import (
     get_h2h_stats,
     get_player_form_and_win_perc,
 )
-from src.scripts.utils.alerter import send_alert
+from scripts.utils.alerter import send_alert
 
 
 def process_markets(

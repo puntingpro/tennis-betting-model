@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
-from src.scripts.utils.config import load_config
+from scripts.utils.config import load_config
 
 
 def consolidate_rankings(input_glob: str, output_path: Path) -> None:
