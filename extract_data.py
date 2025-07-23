@@ -5,119 +5,120 @@ import bz2
 import sys
 import os
 from concurrent.futures import ProcessPoolExecutor
+import glob
+from tqdm import tqdm
 
 
-def process_tar_member(member_tuple):
-    """
-    This function processes a single member of the tar archive.
-    It's designed to be run in a separate process to leverage multiple CPU cores.
-    """
-    tar_path, member_info = member_tuple
+def process_tar_file(tar_path):
     market_data = []
-
-    with tarfile.open(tar_path, "r") as tar:
-        file_obj = tar.extractfile(member_info)
-        if file_obj:
-            with bz2.open(file_obj, "rt") as bz2f:
-                for line in bz2f:
-                    try:
-                        change = json.loads(line)
-                        if "mc" not in change:
-                            continue
-
-                        for market_change in change["mc"]:
-                            market_def = market_change.get("marketDefinition", {})
-
-                            # --- FIX: Filter out non-singles matches and non-MATCH_ODDS markets ---
-                            if (
-                                "/" in market_def.get("eventName", "")
-                                or market_def.get("marketType") != "MATCH_ODDS"
-                            ):
-                                continue
-
-                            # --- FIX: Extract best available back price and volume from 'atb' ---
-                            runner_changes = market_change.get("rc", [])
-                            for runner_change in runner_changes:
-                                best_back_price = None
-                                best_back_volume = None
-
-                                available_to_back = runner_change.get("atb", [])
-                                if available_to_back:
-                                    best_back_price = available_to_back[0][0]
-                                    best_back_volume = available_to_back[0][1]
-
-                                # Find the corresponding runner name from the market definition
-                                runner_id = runner_change.get("id")
-                                runner_info = next(
-                                    (
-                                        r
-                                        for r in market_def.get("runners", [])
-                                        if r.get("id") == runner_id
-                                    ),
-                                    None,
-                                )
-
-                                if runner_info:
-                                    market_data.append(
-                                        {
-                                            "market_id": market_change.get("id"),
-                                            "event_name": market_def.get("eventName"),
-                                            "market_start_time": market_def.get(
-                                                "marketTime"
-                                            ),
-                                            "market_status": market_def.get("status"),
-                                            "in_play": market_def.get("inPlay"),
-                                            "runner_id": runner_id,
-                                            "runner_name": runner_info.get("name"),
-                                            "runner_status": runner_info.get("status"),
-                                            "best_back_price": best_back_price,
-                                            "best_back_volume": best_back_volume,
-                                            "pt": change.get("pt"),  # Published Time
-                                        }
+    try:
+        with tarfile.open(tar_path, "r") as tar:
+            for member_info in tar.getmembers():
+                if not member_info.isfile():
+                    continue
+                file_obj = tar.extractfile(member_info)
+                if file_obj:
+                    # --- FIX: Specify UTF-8 encoding ---
+                    with bz2.open(file_obj, "rt", encoding="utf-8") as bz2f:
+                        for line in bz2f:
+                            try:
+                                change = json.loads(line)
+                                if "mc" not in change:
+                                    continue
+                                for market_change in change["mc"]:
+                                    market_def = market_change.get(
+                                        "marketDefinition", {}
                                     )
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
+                                    market_type = market_def.get("marketType")
+                                    if market_type not in [
+                                        "SET_WINNER",
+                                        "SET_1_WINNER",
+                                        "SET_2_WINNER",
+                                    ]:
+                                        continue
+                                    if "/" in market_def.get("eventName", ""):
+                                        continue
+                                    for runner_change in market_change.get("rc", []):
+                                        atb = runner_change.get("atb", [])
+                                        if atb:
+                                            runner_id = runner_change.get("id")
+                                            runner_info = next(
+                                                (
+                                                    r
+                                                    for r in market_def.get(
+                                                        "runners", []
+                                                    )
+                                                    if r.get("id") == runner_id
+                                                ),
+                                                None,
+                                            )
+                                            if runner_info:
+                                                market_data.append(
+                                                    {
+                                                        "market_id": market_change.get(
+                                                            "id"
+                                                        ),
+                                                        "event_name": market_def.get(
+                                                            "eventName"
+                                                        ),
+                                                        "market_type": market_type,
+                                                        "market_start_time": market_def.get(
+                                                            "marketTime"
+                                                        ),
+                                                        "runner_id": runner_id,
+                                                        "runner_name": runner_info.get(
+                                                            "name"
+                                                        ),
+                                                        "runner_status": runner_info.get(
+                                                            "status"
+                                                        ),
+                                                        "best_back_price": atb[0][0],
+                                                        "pt": change.get("pt"),
+                                                    }
+                                                )
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+    except tarfile.ReadError:
+        print(f"Warning: Could not read {tar_path}, it may be corrupted. Skipping.")
     return market_data
 
 
-def main(tar_path):
-    """
-    Main function to extract data from the tar archive and save it to a CSV file.
-    """
-    if not os.path.exists(tar_path):
-        print(f"Error: File not found at {tar_path}")
+def main(folder_path):
+    if not os.path.isdir(folder_path):
+        print(f"Error: Folder not found at {folder_path}")
+        return
+    tar_files = glob.glob(os.path.join(folder_path, "*.tar"))
+    if not tar_files:
+        print(f"No .tar files found in {folder_path}")
         return
 
-    print(f"Starting data extraction from {tar_path}...")
-
-    with tarfile.open(tar_path, "r") as tar:
-        members = [(tar_path, member) for member in tar.getmembers() if member.isfile()]
-
+    print(f"Found {len(tar_files)} tar files to process. Starting data extraction...")
+    all_market_data = []
     with ProcessPoolExecutor() as executor:
-        results = executor.map(process_tar_member, members)
-
-    all_market_data = [item for sublist in results for item in sublist]
+        results = list(
+            tqdm(
+                executor.map(process_tar_file, tar_files),
+                total=len(tar_files),
+                desc="Processing TAR files",
+            )
+        )
+    for sublist in results:
+        all_market_data.extend(sublist)
 
     if not all_market_data:
-        print("No valid singles MATCH_ODDS market data found in the archive.")
+        print("No valid singles SET_WINNER market data found.")
         return
 
     df = pd.DataFrame(all_market_data)
-    df.dropna(
-        subset=["best_back_price"], inplace=True
-    )  # Remove records where price wasn't available
-
+    df.dropna(subset=["best_back_price"], inplace=True)
     df["pt"] = pd.to_datetime(df["pt"], unit="ms")
-    df.sort_values(by=["market_id", "pt"], inplace=True)
-
-    output_path = "tennis_data.csv"
+    output_path = "tennis_set_data.csv"
     df.to_csv(output_path, index=False)
-
     print(f"Data extraction complete. {len(df)} records saved to {output_path}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python extract_data.py <path_to_tar_file>")
+        print("Usage: python extract_data.py <path_to_folder_with_tar_files>")
     else:
         main(sys.argv[1])

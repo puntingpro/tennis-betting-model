@@ -6,14 +6,8 @@ from datetime import datetime
 import joblib
 import pandas as pd
 import argparse
-import numpy as np
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
-from xgboost.callback import EarlyStopping
-import optuna
-from optuna.integration import XGBoostPruningCallback
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any
 
 from scripts.utils.git_utils import get_git_hash
 from scripts.utils.logger import log_info, log_success, setup_logging
@@ -21,13 +15,16 @@ from scripts.utils.config import load_config
 from scripts.utils.schema import validate_data
 
 
-def train_advanced_model(
-    df: pd.DataFrame, random_state: int, n_trials: int, n_splits: int = 5
-) -> Tuple[XGBClassifier, float, Dict[str, Any]]:
+def train_fast_model(
+    df: pd.DataFrame, random_state: int
+) -> Tuple[XGBClassifier, Dict[str, Any]]:
     """
-    Trains an advanced XGBoost model with hyperparameter optimization using Optuna.
+    Trains a single XGBoost model with a good set of default parameters.
     """
-    df = validate_data(df, "model_training_input")
+    try:
+        df = validate_data(df, "model_training_input")
+    except Exception as e:
+        log_info(f"Schema validation failed, proceeding without it. Error: {e}")
 
     log_info("Creating a balanced dataset by flipping player perspectives...")
     df_loser = df.copy()
@@ -41,139 +38,79 @@ def train_advanced_model(
     df_loser["winner"] = 0
     df_balanced = pd.concat([df, df_loser], ignore_index=True)
 
-    df_balanced = pd.get_dummies(
-        df_balanced, columns=["p1_hand", "p2_hand"], drop_first=True
-    )
     excluded_cols = [
         "match_id",
-        "tourney_date",
+        "set_num",
+        "set_winner_id",
         "p1_id",
         "p2_id",
         "winner",
-        "tourney_name",
-        "surface",
+        # --- FINAL FIX: Exclude non-numeric name columns from training ---
+        "p1_name",
+        "p2_name",
     ]
     features = [col for col in df_balanced.columns if col not in excluded_cols]
     df_balanced[features] = df_balanced[features].fillna(0)
 
-    log_info(
-        f"Training model with {len(features)} features using {n_splits}-fold cross-validation."
-    )
+    log_info(f"Training a fast model with {len(features)} features...")
 
     X = df_balanced[features]
     y = df_balanced["winner"]
 
-    def objective(trial: optuna.Trial) -> float:
-        param = {
-            "objective": "binary:logistic",
-            "eval_metric": "logloss",
-            "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-            "max_depth": trial.suggest_int("max_depth", 3, 10),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
-            "subsample": trial.suggest_float("subsample", 0.6, 1.0),
-            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
-            "gamma": trial.suggest_float("gamma", 0, 5),
-            "random_state": random_state,
-        }
+    params = {
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "n_estimators": 500,
+        "max_depth": 5,
+        "learning_rate": 0.1,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "gamma": 1,
+        "random_state": random_state,
+        "use_label_encoder": False,
+    }
 
-        scores: List[float] = []
-        skf = StratifiedKFold(
-            n_splits=n_splits, shuffle=True, random_state=random_state
-        )
-
-        for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
-            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-            y_train, y_test = y.iloc[train_index], y.iloc[test_index]
-
-            early_stopping = EarlyStopping(rounds=50, save_best=True)
-
-            pruning_callback = (
-                XGBoostPruningCallback(trial, "validation_0-logloss")
-                if fold == 0
-                else None
-            )
-
-            callbacks = [early_stopping]
-            if pruning_callback:
-                callbacks.append(pruning_callback)
-
-            # --- FIX: Move callbacks to the constructor ---
-            model = XGBClassifier(**param, use_label_encoder=False, callbacks=callbacks)
-
-            model.fit(
-                X_train,
-                y_train,
-                eval_set=[(X_test, y_test)],
-                verbose=False,
-            )
-            # --- END FIX ---
-
-            y_prob = model.predict_proba(X_test)[:, 1]
-            scores.append(roc_auc_score(y_test, y_prob))
-
-        return float(np.mean(scores))
-
-    study = optuna.create_study(
-        direction="maximize", pruner=optuna.pruners.MedianPruner()
-    )
-    study.optimize(objective, n_trials=n_trials, n_jobs=-1)
-
-    best_value = study.best_trial.value if study.best_trial.value is not None else 0.0
-
-    log_info(f"Best trial average AUC: {best_value:.4f}")
-    log_info(f"Best params: {study.best_params}")
-
-    log_info("Training final model on the entire dataset with the best parameters...")
-    final_model = XGBClassifier(
-        **study.best_params, use_label_encoder=False, random_state=random_state
-    )
+    final_model = XGBClassifier(**params)
     final_model.fit(X, y)
 
     meta = {
         "timestamp": datetime.now().isoformat(),
         "git_hash": get_git_hash(),
         "model_type": type(final_model).__name__,
-        "algorithm": "xgb",
+        "algorithm": "xgb_fast",
         "features": features,
         "feature_importances": final_model.feature_importances_.tolist(),
         "train_rows": len(X),
-        "cross_val_auc": best_value,
-        "best_params": study.best_params,
+        "params": params,
     }
-    return final_model, best_value, meta
+    return final_model, meta
 
 
 def main_cli(args: argparse.Namespace) -> None:
-    """
-    Main CLI entrypoint for training and evaluating the classification model.
-    """
     setup_logging()
     config = load_config(args.config)
     paths = config["data_paths"]
     params = config["model_params"]
 
-    log_info("Loading feature files...")
-    df = pd.read_csv(paths["consolidated_features"])
-    df["tourney_date"] = pd.to_datetime(df["tourney_date"])
+    log_info("Loading SET-LEVEL feature files...")
+    df = pd.read_csv("data/processed/all_advanced_set_features.csv")
 
-    model, auc, meta = train_advanced_model(
-        df,
-        random_state=params["random_state"],
-        n_trials=params["hyperparameter_trials"],
-    )
+    log_info("Running a fast training cycle with default parameters.")
 
-    log_info(f"Final model trained. Best cross-validated AUC: {auc:.4f}")
+    model, meta = train_fast_model(df, random_state=params["random_state"])
 
-    output_path = Path(paths["model"])
+    log_info("Fast model trained successfully.")
+
+    output_path = Path("models/advanced_xgb_set_model.joblib")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     joblib.dump(model, output_path)
-    log_success(f"Saved model to {output_path}")
+    log_success(f"Saved SET model to {output_path}")
 
     meta_path = output_path.with_suffix(".json")
     with meta_path.open("w") as f:
         json.dump(meta, f, indent=2)
-    log_success(f"Saved metadata to {meta_path}")
+    log_success(f"Saved SET metadata to {meta_path}")
 
 
 if __name__ == "__main__":

@@ -9,87 +9,207 @@ import argparse
 
 from scripts.utils.config import load_config
 from scripts.utils.logger import setup_logging, log_info, log_success
-from scripts.utils.schema import validate_data, PlayerFeaturesSchema
 from scripts.utils.constants import DEFAULT_PLAYER_RANK, ELO_INITIAL_RATING
 
 
-def calculate_player_stats(df_matches: pd.DataFrame) -> pd.DataFrame:
-    """Calculates point-in-time stats for each player in each match."""
-    id_vars = ["match_id", "tourney_date", "surface"]
-    p1_cols = ["winner_id", "loser_id"]
-    p2_cols = ["loser_id", "winner_id"]
+def parse_score_to_sets(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Parses the match score string to determine the winner of each set.
+    Expands the DataFrame to have one row per set.
+    """
+    log_info("Parsing match scores to determine set winners...")
+    sets_data = []
+    for row in tqdm(df.itertuples(), total=len(df), desc="Parsing Scores"):
+        try:
+            scores = str(row.score).split(" ")
+            for i, set_score in enumerate(scores):
+                if "-" in set_score and "RET" not in set_score:
+                    p1_games, p2_games = map(int, set_score.split("-"))
 
-    df_p1 = df_matches[id_vars + p1_cols].rename(
-        columns={"winner_id": "player_id", "loser_id": "opponent_id"}
-    )
-    df_p1["won"] = 1
+                    set_num = i + 1
+                    set_winner_id = (
+                        row.winner_id if p1_games > p2_games else row.loser_id
+                    )
 
-    df_p2 = df_matches[id_vars + p2_cols].rename(
-        columns={"loser_id": "player_id", "winner_id": "opponent_id"}
-    )
-    df_p2["won"] = 0
+                    sets_data.append(
+                        {
+                            "match_id": row.match_id,
+                            "set_num": set_num,
+                            "set_winner_id": set_winner_id,
+                        }
+                    )
+        except (ValueError, IndexError):
+            continue
 
-    df_player_matches = pd.concat([df_p1, df_p2], ignore_index=True)
-    df_player_matches = df_player_matches.sort_values(by="tourney_date")
-
-    gb_player = df_player_matches.groupby("player_id")
-    df_player_matches["matches_played"] = gb_player.cumcount()
-    df_player_matches["wins"] = gb_player["won"].cumsum() - df_player_matches["won"]
-
-    gb_surface = df_player_matches.groupby(["player_id", "surface"])
-    df_player_matches["surface_matches"] = gb_surface.cumcount()
-    df_player_matches["surface_wins"] = (
-        gb_surface["won"].cumsum() - df_player_matches["won"]
-    )
-
-    df_player_matches["form_last_10"] = (
-        gb_player["won"].shift(1).rolling(window=10, min_periods=1).mean().fillna(0)
-    )
-    df_player_matches["win_perc"] = (
-        df_player_matches["wins"] / df_player_matches["matches_played"]
-    ).fillna(0)
-    df_player_matches["surface_win_perc"] = (
-        df_player_matches["surface_wins"] / df_player_matches["surface_matches"]
-    ).fillna(0)
-
-    stats_cols = [
-        "match_id",
-        "player_id",
-        "win_perc",
-        "surface_win_perc",
-        "form_last_10",
-    ]
-    return df_player_matches[stats_cols]
+    sets_df = pd.DataFrame(sets_data)
+    return pd.merge(df, sets_df, on="match_id", how="inner")
 
 
-def add_h2h_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculates point-in-time Head-to-Head (H2H) stats."""
-    log_info("Calculating Head-to-Head (H2H) stats...")
-    h2h_records: defaultdict[tuple[int, int], defaultdict[int, int]] = defaultdict(
-        lambda: defaultdict(int)
-    )
-    h2h_results = []
-    df_sorted = df.sort_values(by="tourney_date")
-    for row in tqdm(df_sorted.itertuples(), total=len(df), desc="H2H Calculation"):
-        p1_id, p2_id = int(row.p1_id), int(row.p2_id)  # type: ignore
+def calculate_surface_elo(df_matches: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates point-in-time, surface-specific Elo ratings for each player.
+    """
+    log_info("Calculating surface-specific Elo ratings...")
+    surface_elos = defaultdict(lambda: defaultdict(lambda: ELO_INITIAL_RATING))
 
-        player_pair: tuple[int, int] = (
-            (p1_id, p2_id) if p1_id < p2_id else (p2_id, p1_id)
-        )
+    elo_results = []
 
-        p1_wins_vs_p2 = h2h_records[player_pair][p1_id]
-        p2_wins_vs_p1 = h2h_records[player_pair][p2_id]
-        h2h_results.append(
+    for row in tqdm(
+        df_matches.itertuples(), total=len(df_matches), desc="Elo Calculation"
+    ):
+        winner_id = row.winner_id
+        loser_id = row.loser_id
+        surface = row.surface
+
+        winner_elo = surface_elos[winner_id][surface]
+        loser_elo = surface_elos[loser_id][surface]
+
+        expected_win_winner = 1 / (1 + 10 ** ((loser_elo - winner_elo) / 400))
+        k = 32
+        new_winner_elo = winner_elo + k * (1 - expected_win_winner)
+        new_loser_elo = loser_elo + k * (0 - (1 - expected_win_winner))
+
+        surface_elos[winner_id][surface] = new_winner_elo
+        surface_elos[loser_id][surface] = new_loser_elo
+
+        # Ensure consistent p1/p2 assignment for merging
+        p1_id = min(winner_id, loser_id)
+        p2_id = max(winner_id, loser_id)
+
+        elo_results.append(
             {
                 "match_id": row.match_id,
-                "h2h_p1_wins": p1_wins_vs_p2,
-                "h2h_p2_wins": p2_wins_vs_p1,
+                "p1_id": p1_id,
+                "p2_id": p2_id,
+                "p1_surface_elo_pre_match": surface_elos[p1_id][surface],
+                "p2_surface_elo_pre_match": surface_elos[p2_id][surface],
             }
         )
-        winner_id = int(row.winner_id)  # type: ignore
-        h2h_records[player_pair][winner_id] += 1
-    h2h_df = pd.DataFrame(h2h_results)
-    return pd.merge(df, h2h_df, on="match_id", how="left")
+
+    return pd.DataFrame(elo_results)
+
+
+def calculate_player_stats(df_matches_with_ranks: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates point-in-time stats with anti-leakage logic.
+    """
+    log_info("Calculating player stats with anti-leakage logic...")
+
+    p1_cols = {
+        "winner_id": "player_id",
+        "loser_id": "opponent_id",
+        "winner_rank": "player_rank",
+        "loser_rank": "opponent_rank",
+    }
+    p2_cols = {
+        "loser_id": "player_id",
+        "winner_id": "opponent_id",
+        "loser_rank": "player_rank",
+        "winner_rank": "opponent_rank",
+    }
+
+    p1 = df_matches_with_ranks[
+        [
+            "match_id",
+            "tourney_date",
+            "surface",
+            "winner_id",
+            "loser_id",
+            "score",
+            "winner_rank",
+            "loser_rank",
+        ]
+    ].rename(columns=p1_cols)
+    p1["won"] = 1
+    p2 = df_matches_with_ranks[
+        [
+            "match_id",
+            "tourney_date",
+            "surface",
+            "winner_id",
+            "loser_id",
+            "score",
+            "winner_rank",
+            "loser_rank",
+        ]
+    ].rename(columns=p2_cols)
+    p2["won"] = 0
+
+    player_matches = pd.concat([p1, p2]).sort_values(by="tourney_date")
+
+    player_stats_cache = defaultdict(
+        lambda: {
+            "matches_played": 0,
+            "wins": 0,
+            "form": [],
+            "surface_matches": defaultdict(int),
+            "surface_wins": defaultdict(int),
+            "last_match_date": pd.NaT,
+            "recent_sets": [],
+            "opponent_ranks": [],
+        }
+    )
+
+    match_features = []
+
+    for date, daily_matches in tqdm(
+        player_matches.groupby("tourney_date"), desc="Processing matches day-by-day"
+    ):
+        daily_features = []
+        for row in daily_matches.itertuples():
+            player_id = row.player_id
+            stats = player_stats_cache[player_id]
+
+            daily_features.append(
+                {
+                    "match_id": row.match_id,
+                    "player_id": player_id,
+                    "win_perc": (stats["wins"] / stats["matches_played"])
+                    if stats["matches_played"] > 0
+                    else 0,
+                    "surface_win_perc": (
+                        stats["surface_wins"][row.surface]
+                        / stats["surface_matches"][row.surface]
+                    )
+                    if stats["surface_matches"][row.surface] > 0
+                    else 0,
+                    "form_last_10": np.mean(stats["form"]) if stats["form"] else 0,
+                    "rest_days": (date - stats["last_match_date"]).days
+                    if pd.notna(stats["last_match_date"])
+                    else 30,
+                    "sets_played_last_7d": sum(
+                        count
+                        for match_date, count in stats["recent_sets"]
+                        if (date - match_date).days <= 7
+                    ),
+                    "avg_opponent_rank_last_10": np.mean(stats["opponent_ranks"])
+                    if stats["opponent_ranks"]
+                    else DEFAULT_PLAYER_RANK,
+                }
+            )
+
+        match_features.extend(daily_features)
+
+        for row in daily_matches.itertuples():
+            stats = player_stats_cache[row.player_id]
+            stats["matches_played"] += 1
+            stats["wins"] += row.won
+            stats["surface_matches"][row.surface] += 1
+            stats["surface_wins"][row.surface] += row.won
+            stats["form"] = (stats["form"] + [row.won])[-10:]
+            stats["opponent_ranks"] = (stats["opponent_ranks"] + [row.opponent_rank])[
+                -10:
+            ]
+            stats["last_match_date"] = date
+            try:
+                sets_played = len(str(row.score).split())
+                stats["recent_sets"] = [
+                    s for s in stats["recent_sets"] if (date - s[0]).days <= 30
+                ] + [(date, sets_played)]
+            except:
+                continue
+
+    return pd.DataFrame(match_features)
 
 
 def main(args):
@@ -110,73 +230,75 @@ def main(args):
     df_rankings["ranking_date"] = pd.to_datetime(
         df_rankings["ranking_date"], utc=True, errors="coerce"
     )
-    df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
+    df_matches.dropna(
+        subset=["tourney_date", "winner_id", "loser_id", "score"], inplace=True
+    )
     df_rankings.dropna(subset=["ranking_date", "player"], inplace=True)
-
     df_matches["winner_id"] = df_matches["winner_id"].astype("int64")
     df_matches["loser_id"] = df_matches["loser_id"].astype("int64")
     df_rankings["player"] = df_rankings["player"].astype("int64")
-
     if "match_id" not in df_matches.columns:
         df_matches["match_id"] = (
             df_matches["tourney_id"].astype(str)
             + "-"
             + df_matches["match_num"].astype(str)
         )
+
     df_matches = df_matches.sort_values(by="tourney_date")
 
-    log_info("Randomly assigning P1/P2 to prevent data leakage...")
-    is_swapped = np.random.choice([True, False], size=len(df_matches))
+    df_rankings_sorted = df_rankings.sort_values(by="ranking_date")
+    winner_ranks = pd.merge_asof(
+        left=df_matches[["tourney_date", "winner_id"]],
+        right=df_rankings_sorted[["ranking_date", "player", "rank"]],
+        left_on="tourney_date",
+        right_on="ranking_date",
+        left_by="winner_id",
+        right_by="player",
+        direction="backward",
+    ).rename(columns={"rank": "winner_rank"})
+    loser_ranks = pd.merge_asof(
+        left=df_matches[["tourney_date", "loser_id"]],
+        right=df_rankings_sorted[["ranking_date", "player", "rank"]],
+        left_on="tourney_date",
+        right_on="ranking_date",
+        left_by="loser_id",
+        right_by="player",
+        direction="backward",
+    ).rename(columns={"rank": "loser_rank"})
+    df_matches["winner_rank"] = winner_ranks["winner_rank"].fillna(DEFAULT_PLAYER_RANK)
+    df_matches["loser_rank"] = loser_ranks["loser_rank"].fillna(DEFAULT_PLAYER_RANK)
 
-    p1_ids = np.where(is_swapped, df_matches["loser_id"], df_matches["winner_id"])
-    p2_ids = np.where(is_swapped, df_matches["winner_id"], df_matches["loser_id"])
-
-    features_df = df_matches[
-        ["match_id", "tourney_date", "tourney_name", "surface", "winner_id"]
-    ].copy()
-    features_df["p1_id"] = p1_ids
-    features_df["p2_id"] = p2_ids
-
-    log_info("Calculating player stats (vectorized)...")
     player_stats_df = calculate_player_stats(df_matches)
+    df_surface_elo = calculate_surface_elo(df_matches)
+    df_sets = parse_score_to_sets(df_matches)
 
-    log_info("Merging stats and building final feature set...")
-    features_df = add_h2h_stats(features_df)
-    features_df["winner"] = (features_df["p1_id"] == features_df["winner_id"]).astype(
-        int
+    log_info("Assembling final feature set...")
+    features_df = df_sets[["match_id", "set_num", "set_winner_id"]]
+
+    # Assign P1/P2 consistently
+    match_players = df_matches[["match_id", "winner_id", "loser_id"]].copy()
+    match_players["p1_id"] = np.minimum(
+        match_players["winner_id"], match_players["loser_id"]
     )
-    features_df = features_df.drop(columns=["winner_id"])
-
-    log_info("Merging Elo ratings...")
+    match_players["p2_id"] = np.maximum(
+        match_players["winner_id"], match_players["loser_id"]
+    )
     features_df = pd.merge(
-        features_df,
-        df_elo,
-        left_on=["match_id"],
-        right_on=["match_id"],
-        how="left",
+        features_df, match_players[["match_id", "p1_id", "p2_id"]], on="match_id"
     )
 
-    features_df["p1_elo"] = np.where(
-        features_df["p1_id"] == features_df["p1_id_elo"],
-        features_df["p1_elo"],
-        features_df["p2_elo"],
-    )
-    features_df["p2_elo"] = np.where(
-        features_df["p2_id"] == features_df["p2_id_elo"],
-        features_df["p2_elo"],
-        features_df["p1_elo"],
-    )
-    features_df.drop(columns=["p1_id_elo", "p2_id_elo"], inplace=True)
+    features_df["winner"] = (
+        features_df["p1_id"] == features_df["set_winner_id"]
+    ).astype(int)
 
-    features_df["p1_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
-    features_df["p2_elo"].fillna(ELO_INITIAL_RATING, inplace=True)
+    # Merge all features
+    features_df = pd.merge(features_df, df_elo, on="match_id", how="left")
+    features_df = pd.merge(
+        features_df, df_surface_elo, on=["match_id", "p1_id", "p2_id"], how="left"
+    )
 
     p1_stats = player_stats_df.rename(
-        columns={
-            "win_perc": "p1_win_perc",
-            "surface_win_perc": "p1_surface_win_perc",
-            "form_last_10": "p1_form_last_10",
-        }
+        columns=lambda c: f"p1_{c}" if c not in ["match_id", "player_id"] else c
     )
     features_df = pd.merge(
         features_df,
@@ -184,14 +306,10 @@ def main(args):
         left_on=["match_id", "p1_id"],
         right_on=["match_id", "player_id"],
         how="left",
-    ).drop("player_id", axis=1)
+    )
 
     p2_stats = player_stats_df.rename(
-        columns={
-            "win_perc": "p2_win_perc",
-            "surface_win_perc": "p2_surface_win_perc",
-            "form_last_10": "p2_form_last_10",
-        }
+        columns=lambda c: f"p2_{c}" if c not in ["match_id", "player_id"] else c
     )
     features_df = pd.merge(
         features_df,
@@ -199,7 +317,7 @@ def main(args):
         left_on=["match_id", "p2_id"],
         right_on=["match_id", "player_id"],
         how="left",
-    ).drop("player_id", axis=1)
+    )
 
     player_info = df_players[["player_id", "hand", "height"]].set_index("player_id")
     features_df = features_df.merge(
@@ -209,46 +327,65 @@ def main(args):
         player_info, left_on="p2_id", right_index=True, how="left"
     ).rename(columns={"hand": "p2_hand", "height": "p2_height"})
 
-    log_info("Fetching player rankings (vectorized)...")
-    df_rankings_sorted = df_rankings.sort_values(by="ranking_date")
-    features_df_sorted = features_df.sort_values(by="tourney_date")
+    p1_ranks = df_matches[
+        ["match_id", "winner_id", "loser_id", "winner_rank", "loser_rank"]
+    ].copy()
+    p1_ranks["p1_id"] = np.minimum(p1_ranks["winner_id"], p1_ranks["loser_id"])
+    p1_ranks["p1_rank"] = np.where(
+        p1_ranks["p1_id"] == p1_ranks["winner_id"],
+        p1_ranks["winner_rank"],
+        p1_ranks["loser_rank"],
+    )
 
-    p1_ranks = pd.merge_asof(
-        left=features_df_sorted[["match_id", "tourney_date", "p1_id"]],
-        right=df_rankings_sorted[["ranking_date", "player", "rank"]],
-        left_on="tourney_date",
-        right_on="ranking_date",
-        left_by="p1_id",
-        right_by="player",
-        direction="backward",
-    ).rename(columns={"rank": "p1_rank"})[["match_id", "p1_rank"]]
-    p2_ranks = pd.merge_asof(
-        left=features_df_sorted[["match_id", "tourney_date", "p2_id"]],
-        right=df_rankings_sorted[["ranking_date", "player", "rank"]],
-        left_on="tourney_date",
-        right_on="ranking_date",
-        left_by="p2_id",
-        right_by="player",
-        direction="backward",
-    ).rename(columns={"rank": "p2_rank"})[["match_id", "p2_rank"]]
+    p2_ranks = df_matches[
+        ["match_id", "winner_id", "loser_id", "winner_rank", "loser_rank"]
+    ].copy()
+    p2_ranks["p2_id"] = np.maximum(p2_ranks["winner_id"], p2_ranks["loser_id"])
+    p2_ranks["p2_rank"] = np.where(
+        p2_ranks["p2_id"] == p2_ranks["winner_id"],
+        p2_ranks["winner_rank"],
+        p2_ranks["loser_rank"],
+    )
 
-    features_df = pd.merge(features_df, p1_ranks, on="match_id", how="left")
-    features_df = pd.merge(features_df, p2_ranks, on="match_id", how="left")
-
-    features_df["p1_rank"].fillna(DEFAULT_PLAYER_RANK, inplace=True)
-    features_df["p2_rank"].fillna(DEFAULT_PLAYER_RANK, inplace=True)
+    features_df = pd.merge(
+        features_df, p1_ranks[["match_id", "p1_rank"]], on="match_id"
+    )
+    features_df = pd.merge(
+        features_df, p2_ranks[["match_id", "p2_rank"]], on="match_id"
+    )
 
     features_df["rank_diff"] = features_df["p1_rank"] - features_df["p2_rank"]
     features_df["elo_diff"] = features_df["p1_elo"] - features_df["p2_elo"]
+    features_df["surface_elo_diff"] = (
+        features_df["p1_surface_elo_pre_match"]
+        - features_df["p2_surface_elo_pre_match"]
+    )
 
-    features_df = validate_data(features_df, PlayerFeaturesSchema, "player_features")
+    features_df = pd.get_dummies(
+        features_df, columns=["p1_hand", "p2_hand"], prefix_sep="_"
+    )
 
-    output_path = Path(paths["consolidated_features"])
+    # Add player names for the backtester to use
+    player_names = df_players[["player_id", "name_first", "name_last"]].copy()
+    player_names["player_name"] = (
+        player_names["name_first"] + " " + player_names["name_last"]
+    )
+    player_name_map = player_names[["player_id", "player_name"]].set_index("player_id")
+    features_df = features_df.merge(
+        player_name_map, left_on="p1_id", right_index=True, how="left"
+    ).rename(columns={"player_name": "p1_name"})
+    features_df = features_df.merge(
+        player_name_map, left_on="p2_id", right_index=True, how="left"
+    ).rename(columns={"player_name": "p2_name"})
+
+    output_path = Path("data/processed/all_advanced_set_features.csv")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    log_info(f"Saving features to {output_path}...")
+    log_info(f"Saving FINAL SET-LEVEL features to {output_path}...")
     features_df.to_csv(output_path, index=False)
 
-    log_success(f"✅ Successfully created feature library at {output_path}")
+    log_success(
+        f"✅ Successfully created FINAL SET-LEVEL feature library at {output_path}"
+    )
 
 
 if __name__ == "__main__":
