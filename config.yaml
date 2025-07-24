@@ -2,7 +2,7 @@
 
 # File Paths
 data_paths:
-  # Raw data inputs
+  raw_data_dir: data/raw
   raw_atp_matches_glob: "data/tennis_atp/atp_matches_*.csv"
   raw_wta_matches_glob: "data/tennis_wta/wta_matches_*.csv"
   raw_atp_rankings_glob: "data/tennis_atp/atp_rankings_*.csv"

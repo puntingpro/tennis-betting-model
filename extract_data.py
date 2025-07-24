@@ -1,5 +1,5 @@
 import tarfile
-import json
+import orjson as json  # MODIFICATION: Use the much faster orjson library
 import pandas as pd
 import bz2
 import sys
@@ -10,6 +10,9 @@ from tqdm import tqdm
 
 
 def process_tar_file(tar_path):
+    """
+    Processes a single tar archive and saves its results to a temporary parquet file.
+    """
     market_data = []
     try:
         with tarfile.open(tar_path, "r") as tar:
@@ -18,7 +21,6 @@ def process_tar_file(tar_path):
                     continue
                 file_obj = tar.extractfile(member_info)
                 if file_obj:
-                    # --- FIX: Specify UTF-8 encoding ---
                     with bz2.open(file_obj, "rt", encoding="utf-8") as bz2f:
                         for line in bz2f:
                             try:
@@ -80,7 +82,14 @@ def process_tar_file(tar_path):
                                 continue
     except tarfile.ReadError:
         print(f"Warning: Could not read {tar_path}, it may be corrupted. Skipping.")
-    return market_data
+
+    # MODIFICATION: Write to a temporary file instead of returning a large list
+    if market_data:
+        temp_df = pd.DataFrame(market_data)
+        temp_filename = f"temp_progress_{os.path.basename(tar_path)}.parquet"
+        temp_df.to_parquet(temp_filename)
+        return temp_filename
+    return None
 
 
 def main(folder_path):
@@ -93,28 +102,40 @@ def main(folder_path):
         return
 
     print(f"Found {len(tar_files)} tar files to process. Starting data extraction...")
-    all_market_data = []
+
     with ProcessPoolExecutor() as executor:
-        results = list(
+        temp_files = list(
             tqdm(
                 executor.map(process_tar_file, tar_files),
                 total=len(tar_files),
                 desc="Processing TAR files",
             )
         )
-    for sublist in results:
-        all_market_data.extend(sublist)
 
-    if not all_market_data:
+    # MODIFICATION: Consolidate temporary files at the end
+    print("\nConsolidating all processed data...")
+    all_dfs = [pd.read_parquet(f) for f in temp_files if f is not None]
+
+    if not all_dfs:
         print("No valid singles SET_WINNER market data found.")
         return
 
-    df = pd.DataFrame(all_market_data)
-    df.dropna(subset=["best_back_price"], inplace=True)
-    df["pt"] = pd.to_datetime(df["pt"], unit="ms")
+    final_df = pd.concat(all_dfs, ignore_index=True)
+
+    final_df.dropna(subset=["best_back_price"], inplace=True)
+    final_df["pt"] = pd.to_datetime(final_df["pt"], unit="ms")
+
     output_path = "tennis_set_data.csv"
-    df.to_csv(output_path, index=False)
-    print(f"Data extraction complete. {len(df)} records saved to {output_path}")
+    final_df.to_csv(output_path, index=False)
+    print(
+        f"Data consolidation complete. {len(final_df)} records saved to {output_path}"
+    )
+
+    print("Cleaning up temporary files...")
+    for temp_file in temp_files:
+        if temp_file is not None:
+            os.remove(temp_file)
+    print("Cleanup complete.")
 
 
 if __name__ == "__main__":
