@@ -1,7 +1,8 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
 
 # C extensions
 *.so
@@ -20,6 +21,7 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -43,8 +45,10 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
+pytest_warnings.txt
 
 # Translations
 *.mo
@@ -69,14 +73,11 @@ docs/_build/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Editor directories and files
+# IDE / Editor configuration
 .idea/
 .vscode/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+*.swp
+*.swo
 
 # Environments
 .env
@@ -87,23 +88,17 @@ ENV/
 env.bak
 venv.bak
 
-# PuntingPro v2 specific
-# =======================
+# Sensitive Files & Credentials
+*.key
+*.crt
+certs/
+config.yaml
 
-# Data files - Ignore raw data, processed data, and specific CSVs
-data/
-tennis_data.csv
-
-# Ignore large data archives
-*.tar
-
-# Ignore trained models
-models/
-
-# Ignore generated plots and reports
+# PuntingPro Specific
+/data/
+/models/
+/outputs/
 *.png
 *.csv
-
-# Ignore log files
-*.log
-logs/
+*.odds
+*.txt

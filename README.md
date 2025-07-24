@@ -7,7 +7,7 @@
 
 ## 📈 Overview
 
-PuntingPro v2 is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system leverages historical match data, advanced feature engineering, and a machine learning model (XGBoost) to predict match outcomes and find profitable trading opportunities in real-time.
+PuntingPro is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system leverages historical match data, advanced feature engineering, and a machine learning model (XGBoost) to predict match outcomes and find profitable trading opportunities in real-time.
 
 This project is built for automation, using the official Betfair Stream API via the flumine Python framework to process market data and place bets with high speed and efficiency.
 
