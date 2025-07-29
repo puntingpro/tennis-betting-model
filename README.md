@@ -1,92 +1,64 @@
-# 🎾 PuntingPro v2: Automated Betfair Tennis Trading Bot
-
-[![CI Status](https://github.com/puntingpro/P1v2/actions/workflows/ci.yml/badge.svg)](https://github.com/puntingpro/P1v2/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/puntingpro/P1v2/branch/main/graph/badge.svg)](https://codecov.io/gh/puntingpro/P1v2)
-[![License](https://img.shields.io/github/license/puntingpro/P1v2.svg)](https://github.com/puntingpro/P1v2/blob/main/LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+# 🎾 tennis-betting-model: Automated Betfair Tennis Trading Bot
 
 ## 📈 Overview
-
-PuntingPro is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system leverages historical match data, advanced feature engineering, and a machine learning model (XGBoost) to predict match outcomes and find profitable trading opportunities in real-time.
-
-This project is built for automation, using the official Betfair Stream API via the flumine Python framework to process market data and place bets with high speed and efficiency.
-
----
-
-## ✨ Key Features
-
-- **Data-Driven Predictions:** Uses a machine learning model trained on comprehensive historical tennis data to calculate match probabilities.
-- **Automated Bet Execution:** Connects directly to the Betfair Exchange Stream API to monitor markets and place bets automatically without manual intervention.
-- **Value Betting Logic:** Implements a core strategy to only place bets when the model's calculated odds are more favorable than the live market odds.
-- **Robust CI/CD Pipeline:** Integrated with GitHub Actions for automated linting, type-checking, testing, and code coverage reporting to ensure code quality and stability.
-- **Structured Project Layout:** Follows modern Python best practices with a `src` layout, virtual environments, and a clear, modular structure.
-
----
+`tennis-betting-model` is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system uses Betfair's historical PRO-level data as the source for all core pricing and odds information, and enriches it with historical match logs to ensure data completeness. The bot's strategy is designed to be compliant with Australian regulations, placing bets pre-play with a "Keep" persistence type, which allows the bet to remain active after the market goes in-play.
 
 ## 🛠️ Technology Stack
+* **Programming Language**: Python
+* **ML Model**: XGBoost
+* **Data Manipulation**: Pandas
+* **Hyperparameter Tuning**: Optuna
+* **Data Extraction**: `tarfile`, `bz2`, `orjson`
 
-- **Programming Language:** Python 3.11
-- **ML Model:** XGBoost
-- **Betfair API Integration:** Flumine
-- **Data Manipulation:** Pandas, Pandera
-- **Hyperparameter Tuning:** Optuna
-- **Testing:** Pytest
-- **CI/CD:** GitHub Actions
-- **Code Quality:** Black, Ruff, MyPy
+## 📂 Project Structure
+The project has been refactored to centralize all core application logic within the `src/` directory.
+└── tennis-betting-model/
+├── data/
+│   ├── raw/              # Raw Betfair .tar files and historical CSVs
+│   ├── processed/        # Cleaned, consolidated data files
+│   └── analysis/         # Backtest results and outputs
+├── models/               # Saved model files (.joblib)
+├── src/
+│   └── tennis_betting_model/ # Main application source code
+│       ├── analysis/      # Backtesting and profitability analysis
+│       ├── builders/       # Feature engineering and data building
+│       ├── modeling/       # Model training and evaluation
+│       ├── pipeline/       # Live trading automation
+│       └── utils/          # Shared utilities (config, logger, etc.)
+├── .github/              # CI/CD workflows
+├── create_mapping_file.py # Helper script to map player IDs
+├── main.py               # Main CLI entrypoint
+└── config.yaml           # Project configuration
 
----
 
-## 🚀 Setup and Installation
+## 🚀 Full Project Pipeline (Commands)
+This is the complete, streamlined sequence of commands to run the entire pipeline from raw data to a realistic backtest. These should be run from the project's root directory.
 
-Follow these steps to set up the project locally.
-
-### 1. Clone the Repository
+**Step 0: Create Player Map (One-Time Setup)**
+This helper script generates a `player_mapping.csv` file by matching players between the Betfair and historical datasets. You must run this once and manually review the output file for accuracy.
 ```bash
-git clone https://github.com/puntingpro/P1v2.git
-cd P1v2
-```
+python scripts/create_mapping_file.py
+Step 1: Prepare All Data
+This single command runs the entire data preparation pipeline: it extracts data from the raw .tar files, enriches it using the player map, and creates the final match log.
 
-### 2. Create and Activate a Virtual Environment
-```bash
-python -m venv .venv
-# On Windows
-.venv\Scripts\Activate.ps1
-# On macOS/Linux
-source .venv/bin/activate
-```
+Bash
 
-### 3. Install Dependencies
-Install the project and all its dependencies in editable mode.
-```bash
-pip install -e .
-```
+python main.py prepare-data
+Step 2: Build All Features & Elo Ratings
+This command reads the prepared data to calculate Elo ratings and engineer all features for the model.
 
-### 4. Configure Environment Variables
-Create a `.env` file in the root directory and add:
-```env
-BETFAIR_USERNAME="your_betfair_username"
-BETFAIR_PASSWORD="your_betfair_password"
-BETFAIR_APP_KEY="your_live_app_key_from_betfair"
-```
-Place your Betfair API certificates (`client-2048.key` and `client-2048.crt`) in a `certs/` directory at the project root.
+Bash
 
----
+python main.py build
+Step 3: Train the Model
+Trains a new XGBoost model on the features generated in the previous step.
 
-## ⚙️ Usage
+Bash
 
-Run the main pipeline:
-```bash
-python main.py
-```
-This will initialize the connection to the Betfair Stream API, start listening for market data, and place bets when value opportunities are identified.
+python main.py model
+Step 4: Run a Realistic Backtest
+Executes a backtest using the new model and real historical Betfair odds to gauge performance.
 
----
+Bash
 
-## 📊 Project Status
-
-The project is currently in **active development**. The core CI/CD pipeline is stable, and the foundational model training scripts are in place.
-
-**Next Steps:**
-- Integrate Official Betfair Data: Refactor data processing scripts to use official Betfair Data Portal.
-- Upgrade to Flumine: Rearchitect the core betting logic for real-time stream processing and bet execution.
-- Expand Test Coverage: Write comprehensive tests for the new Flumine-based logic and data modules.
+python main.py backtest realistic

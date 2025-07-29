@@ -1,62 +1,90 @@
-# src/scripts/utils/common.py
-import numpy as np
+# mypy: disable-error-code="no-any-return"
+# src/tennis_betting_model/utils/common.py
+
 import pandas as pd
+from typing import cast
+from tennis_betting_model.utils.constants import DEFAULT_PLAYER_RANK
 
 
 def get_most_recent_ranking(
-    df_rankings: pd.DataFrame, player_id: int, date: pd.Timestamp
-) -> float:
+    df_rankings: pd.DataFrame, player_id: int, match_date: pd.Timestamp
+) -> int:
     """
-    Retrieves the most recent ranking for a player before a given date.
-
-    Args:
-        df_rankings (pd.DataFrame): DataFrame of historical rankings.
-        player_id (int): The ID of the player.
-        date (pd.Timestamp): The date to find the most recent ranking before.
-
-    Returns:
-        float: The most recent rank, or np.nan if not found.
+    Finds the most recent ranking for a player prior to a given date.
+    Assumes df_rankings is sorted by ranking_date.
     """
-    player_rankings = df_rankings[df_rankings["player"] == player_id]
-    last_ranking_idx = (
-        player_rankings["ranking_date"].searchsorted(date, side="right") - 1
-    )
-    if last_ranking_idx >= 0:
-        return float(player_rankings.iloc[last_ranking_idx]["rank"])
-    return np.nan
+    player_rankings = df_rankings[
+        (df_rankings["player"] == player_id)
+        & (df_rankings["ranking_date"] < match_date)
+    ]
+
+    if not player_rankings.empty:
+        # Reverting to the 'cast' version, as the file-level ignore
+        # will handle the mypy error.
+        return cast(int, player_rankings["rank"].iloc[-1])
+
+    return DEFAULT_PLAYER_RANK
 
 
-def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+def get_surface(tourney_name: str) -> str:
+    """Determines the court surface from the tournament name."""
+    name = str(tourney_name).lower()
+    clay_keywords = ["clay", "roland garros", "monte carlo", "madrid", "rome"]
+    grass_keywords = ["grass", "wimbledon", "queens club", "halle"]
+    if any(keyword in name for keyword in clay_keywords):
+        return "Clay"
+    if any(keyword in name for keyword in grass_keywords):
+        return "Grass"
+    return "Hard"
+
+
+def get_tournament_category(tourney_name: str) -> str:
     """
-    Normalizes all column names to lowercase and replaces spaces with underscores.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to normalize.
-
-    Returns:
-        pd.DataFrame: The DataFrame with normalized column names.
+    Categorizes a tournament name into a broader category for better analysis.
     """
-    # FIX: Add a type: ignore comment to satisfy the strict mypy check.
-    df.columns = [c.lower().replace(" ", "_") for c in df.columns]  # type: ignore
-    return df
+    tourney_name = str(tourney_name).lower()
+
+    category_map = {
+        "grand slam": "Grand Slam",
+        "australian open": "Grand Slam",
+        "roland garros": "Grand Slam",
+        "french open": "Grand Slam",
+        "wimbledon": "Grand Slam",
+        "us open": "Grand Slam",
+        "masters": "Masters 1000",
+        "tour finals": "Tour Finals",
+        "next gen finals": "Tour Finals",
+        "atp cup": "Team Event",
+        "davis cup": "Team Event",
+        "laver cup": "Team Event",
+        "olympics": "Olympics",
+        "challenger": "Challenger",
+        "chall": "Challenger",
+        "itf": "ITF / Futures",
+        "futures": "ITF / Futures",
+    }
+
+    for keyword, category in category_map.items():
+        if keyword in tourney_name:
+            return category
+
+    return "ATP / WTA Tour"
+
+
+def normalize_df_column_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalizes all column names in a DataFrame to a standard format.
+    """
+    rename_dict = {
+        col: col.lower().replace(" ", "_").replace("(", "").replace(")", "")
+        for col in df.columns
+    }
+    return df.rename(columns=rename_dict)
 
 
 def patch_winner_column(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ensures a numeric 'winner' column exists in the DataFrame.
-
-    It checks for a 'result' column and converts it if 'winner' is missing,
-    and ensures the 'winner' column is numeric if it already exists.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to patch.
-
-    Returns:
-        pd.DataFrame: The DataFrame with a guaranteed numeric 'winner' column.
-    """
-    if "winner" not in df.columns and "result" in df.columns:
-        df["winner"] = pd.to_numeric(df["result"], errors="coerce")
-    elif "winner" in df.columns:
-        df["winner"] = pd.to_numeric(df["winner"], errors="coerce")
-
+    """Ensures the 'winner' column exists and is integer type."""
+    if "winner" not in df.columns:
+        df["winner"] = 0
+    df["winner"] = pd.to_numeric(df["winner"], errors="coerce").fillna(0).astype(int)
     return df

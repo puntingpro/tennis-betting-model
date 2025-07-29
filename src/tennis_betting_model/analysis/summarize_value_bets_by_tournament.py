@@ -1,48 +1,10 @@
-# src/scripts/analysis/summarize_value_bets_by_tournament.py
-
 from pathlib import Path
 import pandas as pd
 import argparse
-from typing import Dict
-
-from scripts.utils.file_utils import load_dataframes
-from scripts.utils.logger import log_success, setup_logging
-from scripts.utils.config import load_config
-
-
-def get_tournament_category(tourney_name: str) -> str:
-    """
-    Categorizes a tournament name into a broader category for better analysis.
-    """
-    tourney_name = str(tourney_name).lower()
-
-    # --- BUG FIX: Added 'futures' and made 'challenger' check more robust ---
-    category_map: Dict[str, str] = {
-        "grand slam": "Grand Slam",
-        "australian open": "Grand Slam",
-        "roland garros": "Grand Slam",
-        "french open": "Grand Slam",
-        "wimbledon": "Grand Slam",
-        "us open": "Grand Slam",
-        "masters": "Masters 1000",
-        "tour finals": "Tour Finals",
-        "next gen finals": "Tour Finals",
-        "atp cup": "Team Event",
-        "davis cup": "Team Event",
-        "laver cup": "Team Event",
-        "olympics": "Olympics",
-        "challenger": "Challenger",
-        "chall": "Challenger",  # Added 'chall' for robustness
-        "itf": "ITF / Futures",
-        "futures": "ITF / Futures",  # Added 'futures'
-    }
-    # --- END FIX ---
-
-    for keyword, category in category_map.items():
-        if keyword in tourney_name:
-            return category
-
-    return "ATP / WTA Tour"
+from tennis_betting_model.utils.file_utils import load_dataframes
+from tennis_betting_model.utils.logger import log_success, setup_logging
+from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.common import get_tournament_category
 
 
 def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataFrame:
@@ -96,20 +58,8 @@ def main_cli(args: argparse.Namespace) -> None:
         if not args.show_tournaments:
             display_df = display_df.drop(columns=["tournaments"])
 
-        print(
-            "\n--- Tournament Category Performance (min_bets={}) ---".format(
-                args.min_bets
-            )
-        )
-        print(display_df.to_string())
-
-        if args.show_tournaments:
-            print("\n--- Detailed Tournament Lists ---")
-            for _, row in summary_df.iterrows():
-                print(f"\nCategory: {row['tourney_category']}")
-                for name in row["tournaments"]:
-                    print(f"  - {name}")
-            print("=" * 80)
+        print(f"\n--- Tournament Category Performance (min_bets={args.min_bets}) ---")
+        print(display_df.to_string(index=False))
 
         output_path = Path(paths["tournament_summary"])
         output_path.parent.mkdir(parents=True, exist_ok=True)

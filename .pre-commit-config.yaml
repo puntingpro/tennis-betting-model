@@ -22,12 +22,9 @@ repos:
     rev: v1.10.0 # Using a recent, stable version of mypy
     hooks:
     -   id: mypy
-        # It's crucial to list dependencies that provide type hints here.
-        # This ensures mypy can find and use them in its isolated environment.
+        # Simplified the dependency list for mypy.
         additional_dependencies:
           - "pandas-stubs"
           - "types-PyYAML"
           - "types-requests"
-          - "types-tqdm"
           - "pandera"
-          - "streamlit"

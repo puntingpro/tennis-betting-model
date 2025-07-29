@@ -1,22 +1,23 @@
-# src/scripts/pipeline/run_pipeline.py
-
+import argparse
 import joblib
-from scripts.utils.logger import setup_logging, log_info, log_warning
-from scripts.utils.config import load_config
-from scripts.utils.api import (
+from tennis_betting_model.utils.logger import setup_logging, log_info, log_warning
+from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.api import (
     login_to_betfair,
     get_tennis_competitions,
     get_live_match_odds,
     place_bet,
 )
-from scripts.utils.data_loader import load_pipeline_data
-from scripts.pipeline.value_finder import process_markets
+from tennis_betting_model.utils.data_loader import load_pipeline_data
+from tennis_betting_model.pipeline.value_finder import process_markets
+from tennis_betting_model.utils.alerter import (
+    alert_pipeline_success,
+    alert_pipeline_error,
+)
 
 
 def run_pipeline_once(config: dict, dry_run: bool):
-    """
-    Runs a single iteration of the value-finding pipeline.
-    """
+    """Runs a single iteration of the value-finding pipeline."""
     paths = config["data_paths"]
     betting_config = config["betting"]
 
@@ -25,8 +26,6 @@ def run_pipeline_once(config: dict, dry_run: bool):
     else:
         log_info("🚀 Running in LIVE mode.")
 
-    # In a real application, you would fetch your live bankroll here.
-    # For now, we will use a placeholder value from the config.
     bankroll = float(betting_config.get("live_bankroll", 1000.0))
     log_info(f"Using bankroll: ${bankroll:,.2f}")
 
@@ -39,6 +38,7 @@ def run_pipeline_once(config: dict, dry_run: bool):
             trading, betting_config["profitable_tournaments"]
         )
         if not target_competition_ids:
+            alert_pipeline_success(bets_found=0)
             log_info(
                 "No live competitions found matching profitable tournament keywords. Exiting."
             )
@@ -48,11 +48,6 @@ def run_pipeline_once(config: dict, dry_run: bool):
         market_catalogues, market_book_lookup = get_live_match_odds(
             trading, target_competition_ids
         )
-        if not market_catalogues:
-            log_info(
-                "No live matches found in targeted competitions at this time. Exiting."
-            )
-            return
 
         value_bets = process_markets(
             model,
@@ -64,48 +59,40 @@ def run_pipeline_once(config: dict, dry_run: bool):
             betting_config,
         )
 
-        if not value_bets:
-            log_info("--- No Value Bets Found in This Run ---")
-            return
+        if value_bets:
+            if not dry_run:
+                log_warning(f"Attempting to place {len(value_bets)} live bets...")
+                for bet in value_bets:
+                    kelly_fraction = float(bet.get("kelly_fraction", 0.0))
+                    stake_to_place = bankroll * kelly_fraction
+                    place_bet(
+                        trading=trading,
+                        market_id=bet["market_id"],
+                        selection_id=int(bet["selection_id"]),
+                        price=float(bet["odds"]),
+                        stake=stake_to_place,
+                    )
 
-        if dry_run:
-            log_info("Value bets found and alerted in DRY-RUN mode.")
-            return
+        alert_pipeline_success(bets_found=len(value_bets))
 
-        log_warning(
-            f"Found {len(value_bets)} value bets. Attempting to place live bets..."
-        )
-        for bet in value_bets:
-            # Calculate stake using the Kelly Criterion fraction from the value_finder
-            # You might want to add your own logic here to cap the kelly fraction
-            kelly_fraction = float(bet.get("kelly_fraction", 0.0))
-            stake_to_place = bankroll * kelly_fraction
-
-            place_bet(
-                trading=trading,
-                market_id=bet["market_id"],
-                selection_id=int(bet["selection_id"]),
-                price=float(bet["odds"]),
-                stake=stake_to_place,
-            )
+    except Exception as e:
+        alert_pipeline_error(e)
+        raise
 
     finally:
-        trading.logout()
-        log_info("\nLogged out.")
+        if trading and trading.session_token:
+            trading.logout()
+            log_info("\nLogged out.")
 
 
-def main(args):
-    """
-    Main CLI handler for running a single pipeline instance.
-    """
+def main_cli(args):
+    """Main CLI handler for running a single pipeline instance."""
     setup_logging()
     config = load_config(args.config)
     run_pipeline_once(config, args.dry_run)
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml", help="Path to config file.")
     parser.add_argument(
@@ -113,5 +100,5 @@ if __name__ == "__main__":
         action="store_true",
         help="Run in dry-run mode without placing bets.",
     )
-    args = parser.parse_args()
-    main(args)
+    cli_args = parser.parse_args()
+    main_cli(cli_args)

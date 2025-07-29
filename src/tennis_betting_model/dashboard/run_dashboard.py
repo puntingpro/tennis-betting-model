@@ -1,236 +1,136 @@
-# src/scripts/dashboard/run_dashboard.py
-
-import streamlit as st
 import pandas as pd
-import json
-import numpy as np
+import streamlit as st
 from pathlib import Path
-from typing import Dict
 
-from scripts.utils.config import load_config
-from scripts.pipeline.simulate_bankroll_growth import (
-    simulate_bankroll_growth,
-    calculate_max_drawdown,
-)
-
-# --- Page Configuration ---
-st.set_page_config(layout="wide", page_title="PuntingPro Dashboard", page_icon="🎾")
+from tennis_betting_model.utils.logger import setup_logging, log_error
+from tennis_betting_model.utils.config import load_config
 
 
-# --- Helper Functions ---
-def get_tournament_category(tourney_name: str) -> str:
-    """Categorizes a tournament name into a broader category for better analysis."""
-    tourney_name = str(tourney_name).lower()
-    # --- BUG FIX: Added 'chall' and 'futures' to map ---
-    category_map: Dict[str, str] = {
-        "grand slam": "Grand Slam",
-        "australian open": "Grand Slam",
-        "roland garros": "Grand Slam",
-        "french open": "Grand Slam",
-        "wimbledon": "Grand Slam",
-        "us open": "Grand Slam",
-        "masters": "Masters 1000",
-        "tour finals": "Tour Finals",
-        "next gen finals": "Tour Finals",
-        "atp cup": "Team Event",
-        "davis cup": "Team Event",
-        "laver cup": "Team Event",
-        "olympics": "Olympics",
-        "challenger": "Challenger",
-        "chall": "Challenger",
-        "itf": "ITF / Futures",
-        "futures": "ITF / Futures",
-    }
-    # --- END FIX ---
-    for keyword, category in category_map.items():
-        if keyword in tourney_name:
-            return category
-    return "ATP / WTA Tour"
-
-
-# --- Data Caching ---
-@st.cache_data
-def load_data(paths):
-    """Loads all necessary data for the dashboard, caching the results."""
-    model_meta_path = Path(paths["model"]).with_suffix(".json")
-    if not model_meta_path.exists():
-        st.error(
-            f"Model metadata not found at {model_meta_path}. Please run the 'model' command."
+def load_backtest_data(paths: dict) -> pd.DataFrame:
+    """Loads and prepares the backtest results data."""
+    try:
+        results_path = Path(paths["backtest_results"])
+        df = pd.read_csv(results_path)
+        df["tourney_date"] = pd.to_datetime(df["tourney_date"])
+        # Ensure 'pnl' column exists from the backtest script
+        if "pnl" not in df.columns:
+            df["pnl"] = df.apply(
+                lambda row: (row["odds"] - 1) * 0.95 if row["winner"] == 1 else -1,
+                axis=1,
+            )
+        return df.sort_values("tourney_date")
+    except FileNotFoundError:
+        log_error(
+            f"Backtest results not found at {paths['backtest_results']}. Please run a backtest first."
         )
-        return None, None
-    with open(model_meta_path, "r") as f:
-        model_meta = json.load(f)
-
-    feature_importance_df = pd.DataFrame(
-        {
-            "feature": model_meta.get("features", []),
-            "importance": model_meta.get("feature_importances", []),
-        }
-    ).sort_values(by="importance", ascending=False)
-
-    backtest_path = Path(paths["backtest_results"])
-    if not backtest_path.exists():
-        st.error(
-            f"Backtest results not found at {backtest_path}. Please run the 'backtest' command."
-        )
-        return None, None
-
-    backtest_df = pd.read_csv(backtest_path, parse_dates=["tourney_date"])
-    backtest_df["tourney_category"] = backtest_df["tourney_name"].apply(
-        get_tournament_category
-    )
-
-    return feature_importance_df, backtest_df
+        return pd.DataFrame()
 
 
-# --- Main App ---
-def main():
-    st.title("🎾 PuntingPro: Strategy & Performance Dashboard")
+def run() -> None:
+    """Main function to run the enhanced Streamlit dashboard."""
+    st.set_page_config(layout="wide", page_title="PuntingPro Performance Dashboard")
+    setup_logging()
+
+    st.title("🎾 PuntingPro Performance Dashboard")
     st.markdown(
-        "An interactive dashboard to analyze model performance and simulate betting strategies."
+        "An interactive dashboard to analyze backtesting results and betting strategies."
     )
 
     try:
         config = load_config("config.yaml")
         paths = config["data_paths"]
-
-        feature_importance_df, backtest_df = load_data(paths)
-
-        if feature_importance_df is None or backtest_df is None:
-            st.warning(
-                "Required data files are missing. Please run the build, model, and backtest commands."
-            )
-            return
-
-        # --- Sidebar ---
-        st.sidebar.header("Simulation Controls")
-        strategy = st.sidebar.selectbox(
-            "Select Staking Strategy", ["kelly", "flat", "percent"], index=0
-        )
-        initial_bankroll = st.sidebar.number_input(
-            "Initial Bankroll ($)", min_value=100.0, value=1000.0, step=100.0
-        )
-
-        if strategy == "kelly":
-            stake_unit = 0.5
-            kelly_fraction = st.sidebar.slider("Kelly Fraction", 0.1, 1.0, 0.5, 0.05)
-        elif strategy == "flat":
-            stake_unit = st.sidebar.number_input(
-                "Flat Stake Unit ($)", min_value=1.0, value=10.0, step=1.0
-            )
-            kelly_fraction = 0.0
-        else:  # percent
-            stake_unit = st.sidebar.slider("Stake Percentage (%)", 0.5, 10.0, 1.0, 0.5)
-            kelly_fraction = 0.0
-
-        st.sidebar.header("Data Filters")
-
-        min_date = backtest_df["tourney_date"].min().date()
-        max_date = backtest_df["tourney_date"].max().date()
-        date_range = st.sidebar.date_input("Date Range", [min_date, max_date])
-
-        all_categories = sorted(backtest_df["tourney_category"].unique())
-        selected_categories = st.sidebar.multiselect(
-            "Tournament Categories", all_categories, default=all_categories
-        )
-
-        min_odds = float(backtest_df["odds"].min())
-        max_odds = float(backtest_df["odds"].max())
-        odds_range = st.sidebar.slider(
-            "Odds Range",
-            min_value=min_odds,
-            max_value=max_odds,
-            value=(min_odds, max_odds),
-        )
-
-        # --- Apply Filters ---
-        start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(
-            date_range[1]
-        )
-        filtered_df = backtest_df[
-            (backtest_df["tourney_date"] >= start_date)
-            & (backtest_df["tourney_date"] <= end_date)
-            & (backtest_df["tourney_category"].isin(selected_categories))
-            & (backtest_df["odds"] >= odds_range[0])
-            & (backtest_df["odds"] <= odds_range[1])
-        ]
-
-        st.sidebar.info(
-            f"Displaying {len(filtered_df)} of {len(backtest_df)} total backtested bets."
-        )
-
-        # --- Run Simulation on Filtered Data ---
-        simulation_df = simulate_bankroll_growth(
-            filtered_df.copy(),
-            initial_bankroll=initial_bankroll,
-            strategy=strategy,
-            stake_unit=stake_unit,
-            kelly_fraction=kelly_fraction,
-        )
-
-        simulation_df = simulation_df.replace([np.inf, -np.inf], np.nan).dropna(
-            subset=["bankroll"]
-        )
-
-        # --- Main Content Area ---
-        st.header("Bankroll Growth Simulation")
-
-        if not simulation_df.empty:
-            final_bankroll = simulation_df["bankroll"].iloc[-1]
-            total_profit = final_bankroll - initial_bankroll
-            total_wagered = simulation_df["stake"].sum()
-            roi = (total_profit / total_wagered) * 100 if total_wagered > 0 else 0
-            win_rate = (simulation_df["profit"] > 0).mean() * 100
-            peak_bankroll, max_drawdown = calculate_max_drawdown(
-                simulation_df["bankroll"]
-            )
-
-            kpi_cols = st.columns(4)
-            kpi_cols[0].metric(
-                "Final Bankroll",
-                f"${final_bankroll:,.2f}",
-                f"Profit: ${total_profit:,.2f}",
-            )
-            kpi_cols[1].metric("Return on Investment", f"{roi:.2f}%")
-            kpi_cols[2].metric("Max Drawdown", f"{abs(max_drawdown):.2%}")
-            kpi_cols[3].metric("Win Rate", f"{win_rate:.2f}%")
-
-            simulation_df["cumulative_profit"] = simulation_df["profit"].cumsum()
-
-            # --- BUG FIX: Resample data for charts if it's too large ---
-            chart_data = simulation_df.set_index("tourney_date")
-            if len(chart_data) > 5000:
-                st.info(
-                    "💡 Displaying a resampled summary for performance. Full data is in the table below."
-                )
-                chart_data = chart_data.resample("W").last()
-            # --- END FIX ---
-
-            chart_cols = st.columns(2)
-            chart_cols[0].subheader("Bankroll Growth")
-            chart_cols[0].line_chart(chart_data["bankroll"])
-            chart_cols[1].subheader("Cumulative Profit")
-            chart_cols[1].line_chart(chart_data["cumulative_profit"])
-
-            st.markdown("---")
-            st.header("Simulation Data")
-            if st.checkbox("Show Detailed Bet-by-Bet Simulation Data"):
-                st.dataframe(simulation_df)
-
-        else:
-            st.warning(
-                "No data matches the selected filters. Simulation could not be run."
-            )
-
-        st.markdown("---")
-
-        st.header("Model Feature Importances")
-        st.bar_chart(feature_importance_df.head(25).set_index("feature"))
-
+        df_full = load_backtest_data(paths)
     except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
-        st.exception(e)
+        st.error(f"Failed to load configuration or data. Error: {e}")
+        return
+
+    if df_full.empty:
+        st.warning("No backtest data available to display.")
+        return
+
+    # --- Sidebar Filters ---
+    st.sidebar.header("Strategy Filters")
+
+    min_date = df_full["tourney_date"].min().date()
+    max_date = df_full["tourney_date"].max().date()
+
+    date_range = st.sidebar.date_input(
+        "Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date
+    )
+
+    odds_range = st.sidebar.slider(
+        "Odds Range",
+        min_value=1.0,
+        max_value=float(df_full["odds"].max()),
+        value=(1.0, 10.0),
+        step=0.1,
+    )
+
+    ev_range = st.sidebar.slider(
+        "Expected Value (EV) Range",
+        min_value=float(df_full["expected_value"].min()),
+        max_value=float(df_full["expected_value"].max()),
+        value=(0.1, float(df_full["expected_value"].max())),
+        step=0.01,
+    )
+
+    # Apply filters
+    start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+    df = df_full[
+        (df_full["tourney_date"] >= start_date)
+        & (df_full["tourney_date"] <= end_date)
+        & (df_full["odds"] >= odds_range[0])
+        & (df_full["odds"] <= odds_range[1])
+        & (df_full["expected_value"] >= ev_range[0])
+        & (df_full["expected_value"] <= ev_range[1])
+    ].copy()
+
+    # --- Main Content ---
+    if df.empty:
+        st.info("No bets match the current filter criteria.")
+        return
+
+    # --- Key Performance Indicators (KPIs) ---
+    st.header("Performance Overview")
+    total_bets = len(df)
+    total_pnl = df["pnl"].sum()
+    roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
+    win_rate = (df["winner"].sum() / total_bets) * 100 if total_bets > 0 else 0
+    avg_odds = df["odds"].mean()
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total Bets", f"{total_bets:,}")
+    col2.metric("Total P/L (Units)", f"{total_pnl:,.2f}")
+    col3.metric("ROI", f"{roi:.2f}%")
+    col4.metric("Win Rate", f"{win_rate:.2f}%")
+    col5.metric("Avg. Odds", f"{avg_odds:.2f}")
+
+    st.divider()
+
+    # --- Cumulative Profit Chart ---
+    st.header("Cumulative Profit/Loss Over Time")
+    df["cumulative_pnl"] = df["pnl"].cumsum()
+    st.line_chart(df.set_index("tourney_date")["cumulative_pnl"])
+
+    st.divider()
+
+    # --- Data View ---
+    st.header("Filtered Bet History")
+    st.dataframe(
+        df[
+            [
+                "tourney_date",
+                "match_id",
+                "odds",
+                "predicted_prob",
+                "expected_value",
+                "kelly_fraction",
+                "winner",
+                "pnl",
+            ]
+        ].tail(100)
+    )
 
 
 if __name__ == "__main__":
-    main()
+    run()

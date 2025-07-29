@@ -4,6 +4,7 @@ import sys
 
 def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
     """Configure the root logger for the application."""
+
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     log_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -17,6 +18,7 @@ def setup_logging(level: str = "INFO", json_logs: bool = False) -> None:
     handler.stream.reconfigure(encoding="utf-8")  # type: ignore
 
     # Configure the root logger
+
     logging.basicConfig(level=log_level, handlers=[handler], force=True)
 
 

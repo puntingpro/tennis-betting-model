@@ -3,13 +3,13 @@
 import pandas as pd
 from unittest.mock import MagicMock
 
-from scripts.pipeline.value_finder import process_markets
+from tennis_betting_model.pipeline.value_finder import process_markets
 
 
 def test_process_markets_identifies_value_bet():
     """
     Tests that the core processing logic can take clean, mocked data
-    and correctly identify a value bet by checking its return value.
+    and correctly identify a value bet by checking its return value. [cite: 769]
     """
     # 1. --- Create perfect, clean mock data ---
     mock_model = MagicMock()
@@ -58,8 +58,6 @@ def test_process_markets_identifies_value_bet():
         102: {"hand": "L", "height": 185.0},
     }
 
-    # --- BUG FIX ---
-    # The lists for creating the DataFrame must all be the same length.
     mock_df_rankings = pd.DataFrame(
         {
             "ranking_date": pd.to_datetime(["2023-01-01", "2023-01-01"], utc=True),
@@ -67,7 +65,6 @@ def test_process_markets_identifies_value_bet():
             "rank": [10.0, 25.0],
         }
     ).sort_values(by="ranking_date")
-    # --- END FIX ---
 
     mock_df_matches = pd.DataFrame(
         {

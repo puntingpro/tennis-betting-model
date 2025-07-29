@@ -1,0 +1,83 @@
+# src/tennis_betting_model/analysis/analyze_profitability.py
+
+import pandas as pd
+import argparse
+from pathlib import Path
+from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.logger import setup_logging, log_info, log_error
+
+
+def print_report(df: pd.DataFrame, title: str):
+    """Helper function to print a standardized performance report."""
+    if df.empty:
+        log_info(f"\n{title}\n" + "-" * 50 + "\nNo bets in this category.\n" + "-" * 50)
+        return
+
+    df_report = df.copy()
+
+    total_bets = len(df_report)
+    df_report["pnl"] = df_report.apply(
+        lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
+    )
+    total_pnl = df_report["pnl"].sum()
+    roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
+    win_rate = (df_report["winner"].sum() / total_bets) * 100 if total_bets > 0 else 0
+    avg_odds = df_report["odds"].mean()
+
+    print(f"\n{title}")
+    print("-" * 50)
+    print(f"{'Total Bets Placed:':<25} {total_bets}")
+    print(f"{'Win Rate:':<25} {win_rate:.2f}%")
+    print(f"{'Average Odds:':<25} {avg_odds:.2f}")
+    print(f"{'Total Profit/Loss:':<25} {total_pnl:.2f} units")
+    print(f"{'Return on Investment (ROI):':<25} {roi:.2f}%")
+    print("-" * 50)
+
+
+def main_cli(args):
+    """Main CLI entrypoint for analyzing backtest profitability from config."""
+    setup_logging()
+    config = load_config(args.config)
+    paths = config["data_paths"]
+    strategies = config.get("analysis_strategies", [])
+
+    log_info("--- Running Definitive Strategy Analysis Report ---")
+
+    try:
+        backtest_results_path = Path(paths["backtest_results"])
+        log_info(f"Loading backtest data from {backtest_results_path}...")
+        df = pd.read_csv(backtest_results_path)
+    except FileNotFoundError:
+        log_error(f"Error: The file {backtest_results_path} was not found.")
+        log_error("Please run the 'backtest' command first to generate this file.")
+        return
+
+    print_report(df, "Overall Performance (All Value Bets)")
+
+    if not strategies:
+        log_error("No strategies found in config.yaml under 'analysis_strategies'.")
+        return
+
+    for strategy in strategies:
+        name = strategy.get("name", "Unnamed Strategy")
+        min_odds = strategy.get("min_odds", 0.0)
+        max_odds = strategy.get("max_odds", 1000.0)
+        min_ev = strategy.get("min_ev", 0.0)
+
+        strategy_df = df[
+            (df["odds"] >= min_odds)
+            & (df["odds"] <= max_odds)
+            & (df["expected_value"] >= min_ev)
+        ]
+        print_report(strategy_df, f"Strategy: {name}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Analyze the profitability of different betting strategies from backtest results."
+    )
+    parser.add_argument(
+        "--config", default="config.yaml", help="Path to the config file."
+    )
+    args = parser.parse_args()
+    main_cli(args)

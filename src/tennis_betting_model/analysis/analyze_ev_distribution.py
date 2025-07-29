@@ -6,8 +6,13 @@ import seaborn as sns
 import argparse
 from pathlib import Path
 
-from scripts.utils.file_utils import load_dataframes
-from scripts.utils.logger import log_error, log_info, log_success, setup_logging
+from tennis_betting_model.utils.file_utils import load_dataframes
+from tennis_betting_model.utils.logger import (
+    log_error,
+    log_info,
+    log_success,
+    setup_logging,
+)
 
 
 def run_analyze_ev_distribution(

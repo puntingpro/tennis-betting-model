@@ -1,12 +1,9 @@
-# src/scripts/analysis/plot_tournament_leaderboard.py
-
 from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import argparse
-
-from scripts.utils.logger import log_error, log_success, setup_logging
-from scripts.utils.config import load_config
+from tennis_betting_model.utils.logger import log_error, log_success, setup_logging
+from tennis_betting_model.utils.config import load_config
 
 
 def run_plot_leaderboard(df: pd.DataFrame, sort_by: str, top_n: int):
@@ -38,20 +35,15 @@ def main_cli(args):
         input_path = Path(paths["tournament_summary"])
         df = pd.read_csv(input_path)
 
-        # Default values from the old parser can be hardcoded or moved to config
         fig = run_plot_leaderboard(df, sort_by="roi", top_n=25)
 
-        # --- MODIFIED: Use pathlib for robust path creation ---
         plot_dir = Path(paths.get("plot_dir", "data/plots/"))
         output_path = plot_dir / "tournament_leaderboard.png"
-
-        # Create the parent directory if it doesn't exist
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         fig.savefig(output_path, dpi=300)
         log_success(f"Saved leaderboard plot to {output_path}")
 
-        # Show the plot in a window
         plt.show()
 
     except FileNotFoundError:

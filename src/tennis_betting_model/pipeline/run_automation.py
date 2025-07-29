@@ -1,11 +1,9 @@
-# src/scripts/pipeline/run_automation.py
-
 import time
 import schedule
 from datetime import datetime
-from scripts.utils.logger import setup_logging, log_info
-from scripts.utils.config import load_config
-from scripts.pipeline.run_pipeline import run_pipeline_once
+from tennis_betting_model.utils.logger import setup_logging, log_info
+from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.pipeline.run_pipeline import run_pipeline_once
 
 
 def job():
@@ -14,8 +12,6 @@ def job():
         f"--- Starting new pipeline run at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"
     )
     config = load_config("config.yaml")
-    # Automation always runs in live mode (dry_run=False)
-    # Alerts are handled by the process_markets function
     run_pipeline_once(config, dry_run=False)
     log_info("--- Pipeline run finished. Waiting for next schedule... ---")
 
@@ -35,7 +31,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # Create a dummy args object for standalone execution if needed
+
     class DummyArgs:
         pass
 

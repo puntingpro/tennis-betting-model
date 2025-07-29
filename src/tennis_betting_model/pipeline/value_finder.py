@@ -1,14 +1,123 @@
-# src/scripts/pipeline/value_finder.py
-
 import pandas as pd
 from decimal import Decimal
-from scripts.utils.logger import log_info, log_success
-from scripts.utils.common import get_most_recent_ranking
-from scripts.pipeline.feature_engineering import (
-    get_h2h_stats,
-    get_player_form_and_win_perc,
-)
-from scripts.utils.alerter import send_alert
+from typing import cast, Dict, Any
+from tennis_betting_model.utils.logger import log_info, log_success, log_warning
+from tennis_betting_model.builders.feature_builder import FeatureBuilder
+from tennis_betting_model.utils.alerter import alert_value_bets_found
+
+
+class MarketProcessor:
+    """
+    Encapsulates all logic for processing a single live betting market
+    to find value bets.
+    """
+
+    def __init__(self, model, feature_builder: FeatureBuilder, betting_config: dict):
+        self.model = model
+        self.feature_builder = feature_builder
+        self.ev_threshold = Decimal(str(betting_config.get("ev_threshold", 0.1)))
+
+    def process_market(self, market_catalogue, market_book) -> list:
+        """
+        Analyzes a single market and returns any identified value bets.
+        """
+        if (
+            not market_book
+            or len(market_catalogue.runners) != 2
+            or len(market_book.runners) != 2
+        ):
+            return []
+
+        try:
+            p1_meta, p2_meta = market_catalogue.runners
+            p1_book, p2_book = market_book.runners
+
+            features = self._build_live_features(market_catalogue)
+            if features is None:
+                return []
+
+            features_df = pd.DataFrame(
+                [features], columns=self.model.feature_names_in_
+            ).fillna(0)
+
+            win_prob_p1 = Decimal(str(self.model.predict_proba(features_df)[0][1]))
+            win_prob_p2 = Decimal("1.0") - win_prob_p1
+
+            value_bets = []
+            # Check player 1 for value
+            if p1_book.ex.available_to_back:
+                p1_odds = Decimal(str(p1_book.ex.available_to_back[0].price))
+                p1_ev = (win_prob_p1 * p1_odds) - Decimal("1.0")
+                if p1_ev > self.ev_threshold:
+                    value_bets.append(
+                        self._create_bet_info(
+                            market_catalogue, p1_meta, p1_odds, win_prob_p1, p1_ev
+                        )
+                    )
+
+            # Check player 2 for value
+            if p2_book.ex.available_to_back:
+                p2_odds = Decimal(str(p2_book.ex.available_to_back[0].price))
+                p2_ev = (win_prob_p2 * p2_odds) - Decimal("1.0")
+                if p2_ev > self.ev_threshold:
+                    value_bets.append(
+                        self._create_bet_info(
+                            market_catalogue, p2_meta, p2_odds, win_prob_p2, p2_ev
+                        )
+                    )
+
+            return value_bets
+
+        except Exception as e:
+            log_warning(
+                f"Skipping market {market_catalogue.market_id} due to processing error: {e}"
+            )
+            return []
+
+    def _build_live_features(self, market_catalogue) -> dict | None:
+        """Builds features for a live market."""
+        p1_meta, p2_meta = market_catalogue.runners
+
+        try:
+            p1_id, p2_id = int(p1_meta.selection_id), int(p2_meta.selection_id)
+        except (ValueError, TypeError):
+            log_warning(
+                f"Invalid selection ID in market {market_catalogue.market_id}. Skipping."
+            )
+            return None
+
+        surface = "Hard"
+        if market_catalogue.market_name:
+            name_lower = market_catalogue.market_name.lower()
+            if "clay" in name_lower:
+                surface = "Clay"
+            elif "grass" in name_lower:
+                surface = "Grass"
+
+        match_date = pd.to_datetime(market_catalogue.market_start_time).tz_convert(
+            "UTC"
+        )
+
+        features = self.feature_builder.build_features(
+            p1_id, p2_id, surface, match_date
+        )
+        return cast(Dict[str, Any], features)
+
+    def _create_bet_info(self, market, runner_meta, odds, prob, ev) -> dict:
+        """Creates a formatted dictionary for an identified value bet."""
+        bet_info = {
+            "market_id": market.market_id,
+            "selection_id": runner_meta.selection_id,
+            "match": f"{market.competition.name} - {market.event.name}",
+            "player_name": runner_meta.runner_name,
+            "odds": float(odds),
+            "model_prob": f"{prob:.2%}",
+            "ev": f"{ev:+.2%}",
+        }
+        log_success(
+            f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['ev']})"
+        )
+        return bet_info
 
 
 def process_markets(
@@ -24,110 +133,19 @@ def process_markets(
     Builds features for live markets, makes predictions, and identifies value bets.
     """
     log_info(f"Processing {len(market_catalogues)} live markets...")
-    value_bets = []
-    ev_threshold = Decimal(str(betting_config["ev_threshold"]))
 
+    feature_builder = FeatureBuilder(player_info_lookup, df_rankings, df_matches)
+    market_processor = MarketProcessor(model, feature_builder, betting_config)
+
+    all_value_bets = []
     for market in market_catalogues:
-        market_id = market.market_id
-        market_book = market_book_lookup.get(market_id)
-        surface = market.market_name.split(" ")[-1]
+        market_book = market_book_lookup.get(market.market_id)
+        value_bets_for_market = market_processor.process_market(market, market_book)
+        if value_bets_for_market:
+            all_value_bets.extend(value_bets_for_market)
 
-        if not market_book or len(market.runners) != 2 or len(market_book.runners) != 2:
-            log_info(f"Skipping market {market_id}: Invalid number of runners.")
-            continue
+    if all_value_bets:
+        bet_df = pd.DataFrame(all_value_bets)
+        alert_value_bets_found(bet_df)
 
-        try:
-            p1_meta, p2_meta = market.runners[0], market.runners[1]
-            p1_book, p2_book = market_book.runners[0], market_book.runners[1]
-
-            p1_id, p2_id = int(p1_meta.selection_id), int(p2_meta.selection_id)
-            p1_info, p2_info = player_info_lookup.get(
-                p1_id, {}
-            ), player_info_lookup.get(p2_id, {})
-
-            match_date = pd.to_datetime(market.market_start_time).tz_convert("UTC")
-            p1_rank = get_most_recent_ranking(df_rankings, p1_id, match_date)
-            p2_rank = get_most_recent_ranking(df_rankings, p2_id, match_date)
-
-            p1_win_perc, p1_surface_win_perc, _ = get_player_form_and_win_perc(
-                df_matches, p1_id, surface, match_date
-            )
-            p2_win_perc, p2_surface_win_perc, _ = get_player_form_and_win_perc(
-                df_matches, p2_id, surface, match_date
-            )
-            h2h_p1_wins, h2h_p2_wins = get_h2h_stats(
-                df_matches, p1_id, p2_id, match_date
-            )
-            h2h_total = h2h_p1_wins + h2h_p2_wins
-            h2h_win_perc_p1 = h2h_p1_wins / h2h_total if h2h_total > 0 else 0.5
-
-            feature_dict = {
-                "p1_rank": p1_rank,
-                "p2_rank": p2_rank,
-                "rank_diff": p1_rank - p2_rank
-                if pd.notna(p1_rank) and pd.notna(p2_rank)
-                else 0,
-                "p1_height": p1_info.get("height", 0),
-                "p2_height": p2_info.get("height", 0),
-                "h2h_p1_wins": h2h_p1_wins,
-                "h2h_p2_wins": h2h_p2_wins,
-                "h2h_win_perc_p1": h2h_win_perc_p1,
-                "p1_win_perc": p1_win_perc,
-                "p2_win_perc": p2_win_perc,
-                "p1_surface_win_perc": p1_surface_win_perc,
-                "p2_surface_win_perc": p2_surface_win_perc,
-                "p1_hand_L": 1 if p1_info.get("hand") == "L" else 0,
-                "p1_hand_R": 1 if p1_info.get("hand") == "R" else 0,
-                "p1_hand_U": 1 if p1_info.get("hand") == "U" else 0,
-                "p2_hand_L": 1 if p2_info.get("hand") == "L" else 0,
-                "p2_hand_R": 1 if p2_info.get("hand") == "R" else 0,
-                "p2_hand_U": 1 if p2_info.get("hand") == "U" else 0,
-            }
-            features = pd.DataFrame(
-                [feature_dict], columns=model.feature_names_in_
-            ).fillna(0)
-
-            win_prob_p1 = Decimal(str(model.predict_proba(features)[0][1]))
-            win_prob_p2 = Decimal("1.0") - win_prob_p1
-
-            if p1_book.ex.available_to_back:
-                p1_odds = Decimal(str(p1_book.ex.available_to_back[0].price))
-                p1_ev = (win_prob_p1 * p1_odds) - Decimal("1.0")
-                if p1_ev > ev_threshold:
-                    bet_info = {
-                        "match": f"{market.competition.name} - {market.event.name}",
-                        "player_name": p1_meta.runner_name,
-                        "odds": float(p1_odds),
-                        "Model Prob": f"{win_prob_p1:.2%}",
-                        "EV": f"{p1_ev:+.2%}",
-                    }
-                    log_success(
-                        f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['EV']})"
-                    )
-                    value_bets.append(bet_info)
-
-            if p2_book.ex.available_to_back:
-                p2_odds = Decimal(str(p2_book.ex.available_to_back[0].price))
-                p2_ev = (win_prob_p2 * p2_odds) - Decimal("1.0")
-                if p2_ev > ev_threshold:
-                    bet_info = {
-                        "match": f"{market.competition.name} - {market.event.name}",
-                        "player_name": p2_meta.runner_name,
-                        "odds": float(p2_odds),
-                        "Model Prob": f"{win_prob_p2:.2%}",
-                        "EV": f"{p2_ev:+.2%}",
-                    }
-                    log_success(
-                        f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['EV']})"
-                    )
-                    value_bets.append(bet_info)
-        except Exception as e:
-            log_info(f"Skipping market {market_id} due to processing error: {e}")
-            continue
-
-    # --- ADDED: Send an alert if value bets are found ---
-    if value_bets:
-        bet_df = pd.DataFrame(value_bets)
-        send_alert(bet_df.to_string(index=False))
-
-    return value_bets
+    return all_value_bets

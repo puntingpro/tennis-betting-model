@@ -2,11 +2,12 @@
 
 import pandas as pd
 
-from scripts.utils.logger import log_info, log_warning
-from scripts.utils.common import normalize_columns, patch_winner_column
-
-MAX_KELLY_STAKE_FRACTION = 0.1  # Cap stakes at 10% of the bankroll
-MAX_PROFIT_PER_BET = 10000.0  # Cap profit on any single bet to $10,000
+from tennis_betting_model.utils.logger import log_info, log_warning
+from tennis_betting_model.utils.common import (
+    normalize_df_column_names,
+    patch_winner_column,
+)
+from tennis_betting_model.utils.config import load_config
 
 
 def calculate_max_drawdown(bankroll_series: pd.Series) -> tuple[float, float]:
@@ -28,7 +29,12 @@ def simulate_bankroll_growth(
     """
     Simulates bankroll growth over a series of bets with multiple strategies.
     """
-    df = normalize_columns(df)
+    config = load_config("config.yaml")
+    simulation_params = config.get("simulation_params", {})
+    max_kelly_stake_fraction = simulation_params.get("max_kelly_stake_fraction", 0.1)
+    max_profit_per_bet = simulation_params.get("max_profit_per_bet", 10000.0)
+
+    df = normalize_df_column_names(df)
     df = patch_winner_column(df)
     if df.empty:
         log_info("DataFrame is empty, cannot run simulation.")
@@ -52,15 +58,13 @@ def simulate_bankroll_growth(
         current_stake = 0.0
 
         try:
-            # --- BUG FIX: Add robust casting to prevent calculation errors ---
             row_kelly_fraction = float(row.get("kelly_fraction", 0.0))
             row_odds = float(row.get("odds", 1.0))
             row_winner = int(row.get("winner", 0))
-            # --- END FIX ---
 
             if strategy == "kelly":
                 kelly_frac = row_kelly_fraction * float(kelly_fraction)
-                kelly_frac = min(kelly_frac, MAX_KELLY_STAKE_FRACTION)
+                kelly_frac = min(kelly_frac, max_kelly_stake_fraction)
                 current_stake = bankroll * kelly_frac
             elif strategy == "flat":
                 current_stake = float(stake_unit)
@@ -71,12 +75,11 @@ def simulate_bankroll_growth(
 
             if row_winner == 1:
                 profit = current_stake * (row_odds - 1.0)
-                profit = min(profit, MAX_PROFIT_PER_BET)
+                profit = min(profit, max_profit_per_bet)
             else:
                 profit = -current_stake
 
         except (ValueError, TypeError) as e:
-            # If any row has bad data, log it, skip the bet, and continue
             log_warning(
                 f"Skipping a row in simulation due to data error: {e}. Row: {row.to_dict()}"
             )

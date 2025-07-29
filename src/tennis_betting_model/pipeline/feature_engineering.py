@@ -20,14 +20,14 @@ def get_h2h_stats(
     """
     h2h_matches = df_matches[
         (
-            (df_matches["winner_id"] == p1_id) & (df_matches["loser_id"] == p2_id)
-            | (df_matches["winner_id"] == p2_id) & (df_matches["loser_id"] == p1_id)
+            ((df_matches["winner_id"] == p1_id) & (df_matches["loser_id"] == p2_id))
+            | ((df_matches["winner_id"] == p2_id) & (df_matches["loser_id"] == p1_id))
         )
         & (df_matches["tourney_date"] < match_date)
     ]
 
     p1_wins = len(h2h_matches[h2h_matches["winner_id"] == p1_id])
-    # --- FIXED: Corrected the variable name on the next line ---
+    # The variable name was corrected to p2_id to correctly count player 2's wins
     p2_wins = len(h2h_matches[h2h_matches["winner_id"] == p2_id])
 
     return p1_wins, p2_wins

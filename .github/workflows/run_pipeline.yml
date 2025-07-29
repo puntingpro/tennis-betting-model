@@ -1,3 +1,5 @@
+# .github/workflows/run_pipeline.yml
+
 name: Run PuntingPro Full Pipeline
 
 on:
@@ -21,7 +23,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-          cache: 'pip'
+          cache: 'pip' # Leverages caching for pip dependencies
 
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
@@ -33,16 +35,15 @@ jobs:
 
       - name: Download Data and Models from GCS
         run: |
-          mkdir -p ./data/processed ./models ./data/tennis_atp ./data/tennis_wta
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/processed/* ./data/processed
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/models/* ./models
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_atp/* ./data/tennis_atp
-          gcloud storage cp --recursive gs://puntingpro-data-lucap/raw/tennis_wta/* ./data/tennis_wta
+          mkdir -p ./data/processed ./models ./data/raw/tennis_atp ./data/raw/tennis_wta
+          # Use rsync to only download new or changed files, making the run much faster.
+          gcloud storage rsync -r gs://puntingpro-data-lucap/processed ./data/processed
+          gcloud storage rsync -r gs://puntingpro-data-lucap/models ./models
+          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/tennis_atp ./data/raw/tennis_atp
+          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/tennis_wta ./data/raw/tennis_wta
 
       - name: Create Betfair Certs
         run: |
-          # This step only creates the Betfair certs now.
-          # The Bright Data cert is not needed for IPRoyal.
           mkdir -p certs
           echo "${{ secrets.BF_GHA_CERT }}" > certs/betfair.crt
           echo "${{ secrets.BF_GHA_KEY }}" > certs/betfair.key
@@ -59,3 +60,10 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -u main.py automate
+
+      - name: Upload Analysis Results to GCS
+        run: |
+          echo "Uploading generated analysis files to Google Cloud Storage..."
+          # Use rsync here as well for efficient uploads
+          gcloud storage rsync -r ./data/analysis gs://puntingpro-data-lucap/analysis/
+        continue-on-error: true # Don't fail the job if analysis files don't exist

@@ -1,4 +1,5 @@
-# src/scripts/utils/api.py
+# src/tennis_betting_model/utils/api.py
+
 import os
 import time
 import requests
@@ -7,10 +8,8 @@ from betfairlightweight.exceptions import APIError
 from betfairlightweight.resources import MarketBook, MarketCatalogue
 from typing import List, Tuple, Dict
 
-# --- BUG FIX ---
-from .logger import log_info, log_warning, log_error, log_success
-
-# --- END FIX ---
+from .logger import log_info, log_warning, log_error
+from .alerter import alert_bet_placed
 
 
 def login_to_betfair(config: dict) -> betfairlightweight.APIClient:
@@ -132,7 +131,7 @@ def place_bet(
     stake: float,
 ) -> bool:
     """
-    Places a 'LIMIT' order with 'KEEP' persistence.
+    Places a 'LIMIT' order with 'KEEP' persistence and sends an alert on success.
     """
     if stake < 0.03:
         log_warning(f"Stake {stake:.2f} is below minimum, not placing bet.")
@@ -149,9 +148,8 @@ def place_bet(
             market_id=market_id, instructions=[instruction]
         )
         if order.status == "SUCCESS":
-            log_success(
-                f"✅ Bet placed successfully on selection {selection_id} in market {market_id}."
-            )
+            # Send a specific alert for successful bet placement
+            alert_bet_placed(order)
             return True
         else:
             log_warning(f"⚠️ Bet placement failed with status: {order.status}")

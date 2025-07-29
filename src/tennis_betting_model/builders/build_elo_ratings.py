@@ -1,105 +1,123 @@
-# src/scripts/builders/build_elo_ratings.py
+# src/tennis_betting_model/builders/build_elo_ratings.py
 
+from dataclasses import dataclass, field
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-
-from scripts.utils.config import load_config
-from scripts.utils.logger import setup_logging, log_info, log_success
-from scripts.utils.constants import ELO_K_FACTOR, ELO_INITIAL_RATING
+from tennis_betting_model.utils.config import load_config
 
 
-def calculate_expected_score(rating1, rating2):
-    """Calculates the expected score of player 1 against player 2."""
-    return 1 / (1 + 10 ** ((rating2 - rating1) / 400))
+@dataclass
+class EloCalculator:
+    k_factor: int
+    rating_diff_factor: int
+    initial_rating: int = 1500
+    elo_ratings: dict[int, float] = field(default_factory=dict)
+
+    def get_player_rating(self, player_id: int) -> float:
+        return self.elo_ratings.get(player_id, self.initial_rating)
+
+    def update_ratings(self, winner_id: int, loser_id: int) -> None:
+        winner_rating = self.get_player_rating(winner_id)
+
+        loser_rating = self.get_player_rating(loser_id)
+
+        prob_winner_wins = 1 / (
+            1 + 10 ** ((loser_rating - winner_rating) / self.rating_diff_factor)
+        )
+        self.elo_ratings[winner_id] = winner_rating + self.k_factor * (
+            1 - prob_winner_wins
+        )
+        self.elo_ratings[loser_id] = loser_rating - self.k_factor * (prob_winner_wins)
 
 
-def update_elo(winner_rating, loser_rating):
-    """Updates the Elo ratings for a winner and a loser."""
-    expected_win = calculate_expected_score(winner_rating, loser_rating)
+def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.DataFrame:
+    if not elo_config:
+        raise ValueError("Elo configuration ('elo_config') not found in config.yaml")
 
-    new_winner_rating = winner_rating + ELO_K_FACTOR * (1 - expected_win)
-    new_loser_rating = loser_rating + ELO_K_FACTOR * (0 - (1 - expected_win))
+    calculator = EloCalculator(
+        k_factor=elo_config["k_factor"],
+        rating_diff_factor=elo_config["rating_diff_factor"],
+    )
 
-    return new_winner_rating, new_loser_rating
+    elo_results = []
 
+    match_data["tourney_date"] = pd.to_datetime(match_data["tourney_date"])
+    match_data = match_data.sort_values(by="tourney_date").reset_index(drop=True)
 
-def generate_elo_ratings(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Generates point-in-time Elo ratings for all matches.
-    """
-    log_info("Generating historical Elo ratings for all players...")
+    # --- FIX: Add robust data cleaning to handle corrupted input ---
+    # Coerce non-numeric values in ID columns to NaN (Not a Number)
 
-    elo_ratings: dict[int, float] = {}
-    elo_history = []
+    match_data["winner_historical_id"] = pd.to_numeric(
+        match_data["winner_historical_id"], errors="coerce"
+    )
+    match_data["loser_historical_id"] = pd.to_numeric(
+        match_data["loser_historical_id"], errors="coerce"
+    )
 
-    # Sort matches chronologically to process them in order
-    df = df.sort_values(by="tourney_date").reset_index(drop=True)
+    # Drop rows where IDs are missing, as they are unusable for Elo
+    match_data.dropna(
+        subset=["winner_historical_id", "loser_historical_id"], inplace=True
+    )
 
-    for row in tqdm(df.itertuples(), total=len(df), desc="Calculating Elo"):
-        # FIX: Ignore the strict mypy error for itertuples, as we know the data is clean.
-        winner_id = int(row.winner_id)  # type: ignore
-        loser_id = int(row.loser_id)  # type: ignore
+    # Now that the data is clean, safely convert to integer
+    match_data = match_data.astype(
+        {"winner_historical_id": "int64", "loser_historical_id": "int64"}
+    )
+    # --- END FIX ---
 
-        # Get the current ratings, defaulting to the initial rating if a player is new
-        winner_elo = elo_ratings.get(winner_id, ELO_INITIAL_RATING)
-        loser_elo = elo_ratings.get(loser_id, ELO_INITIAL_RATING)
+    for row in tqdm(
+        match_data.itertuples(index=False),
+        total=len(match_data),
+        desc="Calculating Elo Ratings",
+    ):
+        winner_id, loser_id = row.winner_historical_id, row.loser_historical_id
 
-        # Store the ratings *before* the match
-        elo_history.append(
+        winner_pre_match_elo = calculator.get_player_rating(winner_id)
+        loser_pre_match_elo = calculator.get_player_rating(loser_id)
+
+        p1_id = min(winner_id, loser_id)
+        p2_id = max(winner_id, loser_id)
+
+        elo_results.append(
             {
                 "match_id": row.match_id,
-                "p1_id_elo": winner_id,
-                "p2_id_elo": loser_id,
-                "p1_elo": winner_elo,
-                "p2_elo": loser_elo,
+                "p1_id": p1_id,
+                "p2_id": p2_id,
+                "p1_elo": winner_pre_match_elo
+                if p1_id == winner_id
+                else loser_pre_match_elo,
+                "p2_elo": loser_pre_match_elo
+                if p1_id == winner_id
+                else winner_pre_match_elo,
             }
         )
 
-        # Calculate the new ratings after the match
-        new_winner_elo, new_loser_elo = update_elo(winner_elo, loser_elo)
+        calculator.update_ratings(winner_id=winner_id, loser_id=loser_id)
 
-        # Update the ratings in our lookup
-        elo_ratings[winner_id] = new_winner_elo
-        elo_ratings[loser_id] = new_loser_elo
-
-    return pd.DataFrame(elo_history)
+    return pd.DataFrame(elo_results)
 
 
 def main():
-    """Main CLI entrypoint for building Elo ratings."""
-    setup_logging()
     config = load_config("config.yaml")
     paths = config["data_paths"]
+    elo_config = config.get("elo_config", {})
 
-    log_info(f"Loading consolidated match data from {paths['consolidated_matches']}...")
-    df_matches = pd.read_csv(paths["consolidated_matches"])
-
-    df_matches["tourney_date"] = pd.to_datetime(
-        df_matches["tourney_date"], errors="coerce"
-    )
-    df_matches.dropna(subset=["tourney_date", "winner_id", "loser_id"], inplace=True)
-
-    # Ensure these columns are integer types before processing.
-    df_matches["winner_id"] = df_matches["winner_id"].astype(int)
-    df_matches["loser_id"] = df_matches["loser_id"].astype(int)
-
-    # Ensure match_id is present, creating it if necessary
-    if "match_id" not in df_matches.columns:
-        df_matches["match_id"] = (
-            df_matches["tourney_id"].astype(str)
-            + "-"
-            + df_matches["match_num"].astype(str)
+    print("Loading match log data for Elo calculation...")
+    match_log_path = Path(paths["betfair_match_log"])
+    if not match_log_path.exists():
+        raise FileNotFoundError(
+            f"Match log not found at {match_log_path}. "
+            "Please run the 'prepare-data' command first."
         )
 
-    elo_df = generate_elo_ratings(df_matches)
+    df_matches = pd.read_csv(match_log_path, low_memory=False)
+
+    df_matches.dropna(subset=["match_id", "tourney_date"], inplace=True)
+
+    elo_df = _calculate_elo_ratings(df_matches, elo_config)
 
     output_path = Path(paths["elo_ratings"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
     elo_df.to_csv(output_path, index=False)
-    log_success(f"✅ Successfully saved Elo ratings to {output_path}")
-
-
-if __name__ == "__main__":
-    main()
+    print(f"✅ Successfully calculated and saved Elo ratings to {output_path}")

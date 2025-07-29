@@ -1,30 +1,32 @@
-# --- Core Dependencies ---
-betfairlightweight
-joblib
-matplotlib
-numpy
-optuna
-optuna-integration[xgboost]
+# --- Core Application ---
 pandas
-pandera
-python-json-logger
+xgboost
+optuna
+joblib
 PyYAML
 requests
-schedule
-scikit-learn
+betfairlightweight
+pandera
+orjson
+bz2file # Explicitly add for clarity, though it's a standard library wrapper
+thefuzz
+python-Levenshtein # Recommended for speeding up thefuzz
+
+# --- Analysis & Visualization ---
+matplotlib
 seaborn
 streamlit
-xgboost<2.0.0
 
-# --- Development & Linting Tools ---
-black==23.12.1
+# --- Development & Testing ---
+flake8
 mypy
-pre-commit
-pytest
-pytest-cov
-ruff==0.12.4
-# Type Stubs for MyPy
 pandas-stubs
 types-PyYAML
 types-requests
-types-tqdm
+pytest
+black
+ruff
+pre-commit
+
+# --- Google Cloud ---
+google-cloud-storage

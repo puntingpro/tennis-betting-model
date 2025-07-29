@@ -1,122 +1,164 @@
-# src/scripts/modeling/train_eval_model.py
-
-from pathlib import Path
-import json
-from datetime import datetime
-import joblib
 import pandas as pd
+from sklearn.model_selection import train_test_split
+import xgboost as xgb
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
+import joblib
+from pathlib import Path
+import optuna
+from typing import cast
+from tennis_betting_model.utils.config import load_config
 import argparse
-from xgboost import XGBClassifier
-from typing import Tuple, Dict, Any
-
-from scripts.utils.git_utils import get_git_hash
-from scripts.utils.logger import log_info, log_success, setup_logging
-from scripts.utils.config import load_config
-from scripts.utils.schema import validate_data
 
 
-def train_fast_model(
-    df: pd.DataFrame, random_state: int
-) -> Tuple[XGBClassifier, Dict[str, Any]]:
-    """
-    Trains a single XGBoost model with a good set of default parameters.
-    """
-    try:
-        df = validate_data(df, "model_training_input")
-    except Exception as e:
-        log_info(f"Schema validation failed, proceeding without it. Error: {e}")
+optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-    log_info("Creating a balanced dataset by flipping player perspectives...")
-    df_loser = df.copy()
-    p1_cols = [col for col in df.columns if col.startswith("p1_")]
-    p2_cols = [col for col in df.columns if col.startswith("p2_")]
-    swap_map = {
-        **{p1: p2 for p1, p2 in zip(p1_cols, p2_cols)},
-        **{p2: p1 for p1, p2 in zip(p1_cols, p2_cols)},
-    }
-    df_loser = df_loser.rename(columns=swap_map)
-    df_loser["winner"] = 0
-    df_balanced = pd.concat([df, df_loser], ignore_index=True)
 
-    excluded_cols = [
-        "match_id",
-        "set_num",
-        "set_winner_id",
-        "p1_id",
-        "p2_id",
-        "winner",
-        # --- FINAL FIX: Exclude non-numeric name columns from training ---
-        "p1_name",
-        "p2_name",
-    ]
-    features = [col for col in df_balanced.columns if col not in excluded_cols]
-    df_balanced[features] = df_balanced[features].fillna(0)
-
-    log_info(f"Training a fast model with {len(features)} features...")
-
-    X = df_balanced[features]
-    y = df_balanced["winner"]
-
+def objective(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float:
     params = {
         "objective": "binary:logistic",
         "eval_metric": "logloss",
-        "n_estimators": 500,
-        "max_depth": 5,
-        "learning_rate": 0.1,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "gamma": 1,
-        "random_state": random_state,
         "use_label_encoder": False,
+        "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+        "max_depth": trial.suggest_int("max_depth", 3, 10),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+        "gamma": trial.suggest_float("gamma", 0, 5),
     }
 
-    final_model = XGBClassifier(**params)
-    final_model.fit(X, y)
+    model = xgb.XGBClassifier(**params, random_state=42)
+    model.fit(
+        X_train,
+        y_train,
+        eval_set=[(X_val, y_val)],
+        early_stopping_rounds=50,
+        verbose=False,
+    )
 
-    meta = {
-        "timestamp": datetime.now().isoformat(),
-        "git_hash": get_git_hash(),
-        "model_type": type(final_model).__name__,
-        "algorithm": "xgb_fast",
-        "features": features,
-        "feature_importances": final_model.feature_importances_.tolist(),
-        "train_rows": len(X),
-        "params": params,
-    }
-    return final_model, meta
+    y_pred_proba = model.predict_proba(X_val)[:, 1]
+    auc = roc_auc_score(y_val, y_pred_proba)
+    return cast(float, auc)
 
 
-def main_cli(args: argparse.Namespace) -> None:
-    setup_logging()
-    config = load_config(args.config)
-    paths = config["data_paths"]
-    params = config["model_params"]
+def train_eval_model(
+    data: pd.DataFrame,
+    model_output_path: str,
+    n_trials: int,
+    test_size: float = 0.2,
+    random_state: int = 42,
+):
+    print("--- Starting Model Training and Hyperparameter Optimization ---")
 
-    log_info("Loading SET-LEVEL feature files...")
-    df = pd.read_csv("data/processed/all_advanced_set_features.csv")
+    data.rename(
+        columns=lambda c: c.replace("[", "").replace("]", "").replace("<", ""),
+        inplace=True,
+    )
 
-    log_info("Running a fast training cycle with default parameters.")
+    X = data.drop(
+        columns=[
+            "winner",
+            "match_id",
+            "p1_id",
+            "p2_id",
+            "tourney_date",
+            "tourney_name",
+            "surface",
+        ],
+        errors="ignore",
+    )
+    y = data["winner"]
 
-    model, meta = train_fast_model(df, random_state=params["random_state"])
+    X = pd.get_dummies(X, columns=["p1_hand", "p2_hand"], drop_first=True)
 
-    log_info("Fast model trained successfully.")
+    X_train_main, X_test, y_train_main, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train_main,
+        y_train_main,
+        test_size=0.25,
+        random_state=random_state,
+        stratify=y_train_main,
+    )
 
-    output_path = Path("models/advanced_xgb_set_model.joblib")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    study = optuna.create_study(direction="maximize")
+    print(f"Running Optuna optimization for {n_trials} trials...")
+    study.optimize(
+        lambda trial: objective(trial, X_train, y_train, X_val, y_val),
+        n_trials=n_trials,
+        show_progress_bar=True,
+    )
 
-    joblib.dump(model, output_path)
-    log_success(f"Saved SET model to {output_path}")
+    print("\nOptimization finished.")
+    print(f"Best trial AUC: {study.best_value:.4f}")
+    print("Best hyperparameters found:")
+    for key, value in study.best_params.items():
+        print(f"  {key}: {value}")
 
-    meta_path = output_path.with_suffix(".json")
-    with meta_path.open("w") as f:
-        json.dump(meta, f, indent=2)
-    log_success(f"Saved SET metadata to {meta_path}")
+    print(
+        "\nTraining final model with best hyperparameters on the full training set..."
+    )
+    best_params = study.best_params
+    final_model = xgb.XGBClassifier(
+        **best_params, use_label_encoder=False, eval_metric="logloss", random_state=42
+    )
+    final_model.fit(X_train_main, y_train_main)
+
+    print("Evaluating final model on the hold-out test set...")
+    y_pred_final = final_model.predict(X_test)
+    final_accuracy = accuracy_score(y_test, y_pred_final)
+    report = classification_report(y_test, y_pred_final)
+
+    print(f"\nFinal Model Test Accuracy: {final_accuracy:.4f}")
+    print("Final Model Classification Report:")
+    print(report)
+
+    model_path = Path(model_output_path)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(final_model, model_path)
+    print(f"\n✅ Final optimized model saved to {model_path}")
+
+
+def main_cli(args):
+    try:
+        config = load_config(args.config)
+        paths = config["data_paths"]
+        model_params = config["model_params"]
+
+        feature_path = Path(paths["consolidated_features"])
+
+        if not feature_path.exists():
+            raise FileNotFoundError(
+                f"Feature data not found at {feature_path}. Please run 'python main.py build' first."
+            )
+
+        print(f"Loading feature data from {feature_path}...")
+        feature_data = pd.read_csv(feature_path, low_memory=False)
+
+        # Use max_training_samples from config if it exists
+        max_samples = model_params.get("max_training_samples")
+        if max_samples and len(feature_data) > max_samples:
+            print(
+                f"Full dataset has {len(feature_data)} rows. Taking a random sample of {max_samples} for faster optimization..."
+            )
+            feature_data = feature_data.sample(n=max_samples, random_state=42)
+
+        train_eval_model(
+            feature_data,
+            model_output_path=paths["model"],
+            n_trials=model_params["hyperparameter_trials"],
+        )
+
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train an advanced classification model with cross-validation."
+        description="Train and evaluate the XGBoost model."
     )
-    parser.add_argument("--config", default="config.yaml", help="Path to config file.")
-    args = parser.parse_args()
-    main_cli(args)
+    parser.add_argument(
+        "--config", default="config.yaml", help="Path to the config file."
+    )
+    cli_args = parser.parse_args()
+    main_cli(cli_args)

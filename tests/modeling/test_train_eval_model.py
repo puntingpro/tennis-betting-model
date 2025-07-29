@@ -3,63 +3,91 @@
 import pandas as pd
 import pytest
 from xgboost import XGBClassifier
+import numpy as np
+import joblib
+import optuna
 
-from scripts.modeling.train_eval_model import train_advanced_model
+from tennis_betting_model.modeling.train_eval_model import train_eval_model
 
 
 @pytest.fixture
 def sample_feature_data() -> pd.DataFrame:
-    """Creates a small, balanced DataFrame for testing model training."""
-    # --- MODIFIED: Expanded the dataset to prevent single-class splits ---
+    """
+    Creates a more robust, balanced DataFrame for testing model training.
+    The relationship between rank_diff and the winner is intentionally made non-random.
+    """
     data = {
-        "p1_rank": [10, 20] * 10,
-        "p2_rank": [20, 10] * 10,
-        "rank_diff": [-10, 10] * 10,
-        "p1_hand": ["R", "L"] * 10,
-        "p2_hand": ["L", "R"] * 10,
-        "winner": [1, 0] * 10,
-        "match_id": range(20),
-        "p1_id": [101, 102] * 10,
-        "p2_id": [102, 101] * 10,
+        "p1_rank": [10, 20, 5, 50, 15, 80, 5, 90, 12, 45] * 4,
+        "p2_rank": [20, 10, 50, 5, 80, 15, 90, 5, 45, 12] * 4,
+        "p1_hand": ["R", "L", "R", "R", "L", "R", "R", "L", "R", "L"] * 4,
+        "p2_hand": ["L", "R", "R", "L", "R", "R", "L", "R", "L", "R"] * 4,
     }
     df = pd.DataFrame(data)
-    required_cols = {
-        "tourney_date": pd.to_datetime("2023-01-01"),
-        "tourney_name": "Test Open",
-        "surface": "Hard",
-        "p1_elo": 1500,
-        "p2_elo": 1500,
-        "elo_diff": 0,
-        "h2h_p1_wins": 0,
-        "h2h_p2_wins": 0,
-        "p1_win_perc": 0.5,
-        "p2_win_perc": 0.5,
-        "p1_surface_win_perc": 0.5,
-        "p2_surface_win_perc": 0.5,
-        "p1_form_last_10": 0.5,
-        "p2_form_last_10": 0.5,
-        "p1_height": 180,
-        "p2_height": 180,
-    }
-    for col, val in required_cols.items():
-        df[col] = val
+
+    # Create a predictable winner based on rank difference
+    df["rank_diff"] = df["p1_rank"] - df["p2_rank"]
+    df["winner"] = np.where(
+        df["rank_diff"] < 0, 1, 0
+    )  # Lower rank (p1) is more likely to win
+
+    # Add other required columns that are not the focus of this test
+    df["match_id"] = range(len(df))
+    df["p1_id"] = [101, 102] * (len(df) // 2)
+    df["p2_id"] = [102, 101] * (len(df) // 2)
+    df["tourney_date"] = pd.to_datetime("2023-01-01")
+    df["tourney_name"] = "Test Open"
+    df["surface"] = "Hard"
+
     return df
 
 
-def test_train_advanced_model(sample_feature_data):
+def test_train_eval_model_outputs_correct_types(tmp_path, sample_feature_data):
     """
-    Tests the advanced model training function to ensure it returns the
-    correct types and that the metadata is structured as expected.
+    Tests that the model training function returns the correct object types and
+    that the model file is created.
     """
-    model, auc, meta = train_advanced_model(
-        df=sample_feature_data,
-        random_state=42,
-        n_trials=2,  # Use a small number of trials for a quick test
+    model_path = tmp_path / "test_model.joblib"
+
+    train_eval_model(
+        data=sample_feature_data,
+        model_output_path=str(model_path),
+        n_trials=2,  # Quick test with minimal trials
     )
 
+    assert model_path.exists()
+    model = joblib.load(model_path)
     assert isinstance(model, XGBClassifier)
-    assert isinstance(auc, float) and 0.0 <= auc <= 1.0
-    assert isinstance(meta, dict)
-    assert meta["model_type"] == "XGBClassifier"
-    assert "features" in meta
-    assert "cross_val_auc" in meta
+
+
+def test_train_eval_model_logic_is_sound(tmp_path, sample_feature_data):
+    """
+    Tests the model training logic to ensure it produces a sensible model
+    with plausible performance on a predictable dataset.
+    """
+    model_path = tmp_path / "test_model_logic.joblib"
+
+    # Suppress Optuna's trial logging for cleaner test output
+    optuna.logging.set_verbosity(optuna.logging.CRITICAL)
+
+    train_eval_model(
+        data=sample_feature_data,
+        model_output_path=str(model_path),
+        n_trials=5,
+        test_size=0.5,  # Use a larger test size for stability with small data
+    )
+
+    model = joblib.load(model_path)
+
+    # 1. Check that feature importances are reasonable
+    # For this dataset, rank_diff should be the most important feature.
+    feature_importances = model.get_booster().get_score(importance_type="weight")
+    assert "rank_diff" in feature_importances
+    # Ensure rank_diff is the most important or one of the most important features
+    assert feature_importances["rank_diff"] == max(feature_importances.values())
+
+    # 2. Check that the feature names in the model match the input columns (after one-hot encoding)
+    expected_features = set(
+        ["p1_rank", "p2_rank", "rank_diff", "p1_hand_R", "p2_hand_R"]
+    )
+    model_features = set(model.feature_names_in_)
+    assert expected_features.issubset(model_features)
