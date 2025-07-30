@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 from pathlib import Path
+from typing import cast, Tuple
+import datetime
 
 from tennis_betting_model.utils.logger import setup_logging, log_error
 from tennis_betting_model.utils.config import load_config
@@ -74,15 +76,20 @@ def run() -> None:
         step=0.01,
     )
 
+    # Cast types to ensure mypy understands them correctly
+    date_range_tuple = cast(Tuple[datetime.date, datetime.date], date_range)
+    odds_range_tuple = cast(Tuple[float, float], odds_range)
+    ev_range_tuple = cast(Tuple[float, float], ev_range)
+
     # Apply filters
-    start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-    df = df_full[  # type: ignore[misc]
+    start_date, end_date = pd.to_datetime(date_range_tuple[0]), pd.to_datetime(date_range_tuple[1])
+    df = df_full[
         (df_full["tourney_date"] >= start_date)
         & (df_full["tourney_date"] <= end_date)
-        & (df_full["odds"] >= odds_range[0])
-        & (df_full["odds"] <= odds_range[1])
-        & (df_full["expected_value"] >= ev_range[0])
-        & (df_full["expected_value"] <= ev_range[1])
+        & (df_full["odds"] >= odds_range_tuple[0])
+        & (df_full["odds"] <= odds_range_tuple[1])
+        & (df_full["expected_value"] >= ev_range_tuple[0])
+        & (df_full["expected_value"] <= ev_range_tuple[1])
     ].copy()
 
     # --- Main Content ---
