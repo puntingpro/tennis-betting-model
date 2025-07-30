@@ -8,6 +8,7 @@ from typing import cast
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import log_info, log_error
 import argparse
+from xgboost.callback import EarlyStopping
 
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -31,7 +32,7 @@ def objective(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float:
         X_train,
         y_train,
         eval_set=[(X_val, y_val)],
-        early_stopping_rounds=50,
+        callbacks=[EarlyStopping(rounds=50, save_best=True)],
         verbose=False,
     )
 

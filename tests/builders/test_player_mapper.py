@@ -15,8 +15,8 @@ def mock_historical_driven_player_data(tmp_path: Path) -> dict:
     """
     # 1. Mock Betfair Data (contains a mix of players)
     betfair_data = {
-        "runner_id": [101, 201, 301],
-        "runner_name": ["Rafael Nadal", "Camila Osorio", "Taylor Fritz"],
+        "selection_id": [101, 201, 301],
+        "selection_name": ["Rafael Nadal", "Camila Osorio", "Taylor Fritz"],
         "tourney_name": ["Some Tournament", "Another Tournament", "A Third Event"],
     }
     df_betfair = pd.DataFrame(betfair_data)
