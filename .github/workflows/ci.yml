@@ -36,7 +36,7 @@ jobs:
     - name: Run linter and type checker
       run: |
         # Ruff handles linting, complexity, and line length checks
-        ruff check src/tennis_betting_model/ tests/ --show-source
+        ruff check src/tennis_betting_model/ tests/
         mypy src/tennis_betting_model/
 
     - name: Run tests with pytest
