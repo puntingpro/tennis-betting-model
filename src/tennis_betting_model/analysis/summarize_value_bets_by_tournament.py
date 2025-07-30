@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 import argparse
 from tennis_betting_model.utils.file_utils import load_dataframes
-from tennis_betting_model.utils.logger import log_success, setup_logging
+from tennis_betting_model.utils.logger import log_success, setup_logging, log_error
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.common import get_tournament_category
 
@@ -16,9 +16,14 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
 
     df["tourney_category"] = df["tourney_name"].apply(get_tournament_category)
 
-    df["profit"] = df.apply(
-        lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
-    )
+    # --- REFACTOR: Use the pre-calculated 'pnl' column if it exists. ---
+    if "pnl" not in df.columns:
+        log_error(
+            "Warning: 'pnl' column not found. Calculating profit without commission."
+        )
+        df["pnl"] = df.apply(
+            lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
+        )
 
     df["stake"] = 1
 
@@ -26,13 +31,13 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
         df.groupby("tourney_category")
         .agg(
             total_bets=("stake", "sum"),
-            total_profit=("profit", "sum"),
+            total_pnl=("pnl", "sum"),  # Use pnl column for aggregation
             tournaments=("tourney_name", lambda x: sorted(x.unique().tolist())),
         )
         .reset_index()
     )
     tournament_summary["roi"] = (
-        tournament_summary["total_profit"] / tournament_summary["total_bets"]
+        tournament_summary["total_pnl"] / tournament_summary["total_bets"]
     ) * 100
 
     filtered_summary = tournament_summary[tournament_summary["total_bets"] >= min_bets]

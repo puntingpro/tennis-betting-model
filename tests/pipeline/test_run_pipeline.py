@@ -9,7 +9,7 @@ from tennis_betting_model.pipeline.value_finder import process_markets
 def test_process_markets_identifies_value_bet():
     """
     Tests that the core processing logic can take clean, mocked data
-    and correctly identify a value bet by checking its return value. [cite: 769]
+    and correctly identify a value bet by checking its return value.
     """
     # 1. --- Create perfect, clean mock data ---
     mock_model = MagicMock()
@@ -91,4 +91,5 @@ def test_process_markets_identifies_value_bet():
     value_bet = result[0]
     assert value_bet["player_name"] == "Player A"
     assert value_bet["odds"] == 2.0
-    assert value_bet["EV"] == "+20.00%"
+    # --- FIX: Changed key from "EV" to "ev" to match dictionary ---
+    assert value_bet["ev"] == "+20.00%"

@@ -49,9 +49,21 @@ class MarketProcessor:
                 p1_odds = Decimal(str(p1_book.ex.available_to_back[0].price))
                 p1_ev = (win_prob_p1 * p1_odds) - Decimal("1.0")
                 if p1_ev > self.ev_threshold:
+                    # --- FIX: Calculate Kelly Criterion ---
+                    kelly_denominator = p1_odds - Decimal("1.0")
+                    p1_kelly = (
+                        (p1_ev / kelly_denominator)
+                        if kelly_denominator > 0
+                        else Decimal("0.0")
+                    )
                     value_bets.append(
                         self._create_bet_info(
-                            market_catalogue, p1_meta, p1_odds, win_prob_p1, p1_ev
+                            market_catalogue,
+                            p1_meta,
+                            p1_odds,
+                            win_prob_p1,
+                            p1_ev,
+                            p1_kelly,
                         )
                     )
 
@@ -60,9 +72,21 @@ class MarketProcessor:
                 p2_odds = Decimal(str(p2_book.ex.available_to_back[0].price))
                 p2_ev = (win_prob_p2 * p2_odds) - Decimal("1.0")
                 if p2_ev > self.ev_threshold:
+                    # --- FIX: Calculate Kelly Criterion ---
+                    kelly_denominator = p2_odds - Decimal("1.0")
+                    p2_kelly = (
+                        (p2_ev / kelly_denominator)
+                        if kelly_denominator > 0
+                        else Decimal("0.0")
+                    )
                     value_bets.append(
                         self._create_bet_info(
-                            market_catalogue, p2_meta, p2_odds, win_prob_p2, p2_ev
+                            market_catalogue,
+                            p2_meta,
+                            p2_odds,
+                            win_prob_p2,
+                            p2_ev,
+                            p2_kelly,
                         )
                     )
 
@@ -103,7 +127,8 @@ class MarketProcessor:
         )
         return cast(Dict[str, Any], features)
 
-    def _create_bet_info(self, market, runner_meta, odds, prob, ev) -> dict:
+    # --- FIX: Updated function to accept and add kelly_fraction ---
+    def _create_bet_info(self, market, runner_meta, odds, prob, ev, kelly) -> dict:
         """Creates a formatted dictionary for an identified value bet."""
         bet_info = {
             "market_id": market.market_id,
@@ -113,6 +138,7 @@ class MarketProcessor:
             "odds": float(odds),
             "model_prob": f"{prob:.2%}",
             "ev": f"{ev:+.2%}",
+            "kelly_fraction": float(kelly) if kelly > 0 else 0.0,
         }
         log_success(
             f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['ev']})"

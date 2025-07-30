@@ -16,9 +16,16 @@ def print_report(df: pd.DataFrame, title: str):
     df_report = df.copy()
 
     total_bets = len(df_report)
-    df_report["pnl"] = df_report.apply(
-        lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
-    )
+
+    # --- REFACTOR: Use the pre-calculated PnL column from the backtest. ---
+    # This ensures commission is correctly factored into the analysis.
+    if "pnl" not in df_report.columns:
+        log_error("'pnl' column not found. Run backtest first to generate it.")
+        # Fallback to a simple calculation if 'pnl' is missing
+        df_report["pnl"] = df_report.apply(
+            lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
+        )
+
     total_pnl = df_report["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
     win_rate = (df_report["winner"].sum() / total_bets) * 100 if total_bets > 0 else 0

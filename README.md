@@ -1,62 +1,66 @@
-# 🎾 tennis-betting-model: Automated Betfair Tennis Trading Bot
+🎾 tennis-betting-model: Automated Betfair Tennis Trading Bot
+📈 Overview
 
-## 📈 Overview
-`tennis-betting-model` is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system uses Betfair's historical PRO-level data as the source for all core pricing and odds information, and enriches it with historical match logs to ensure data completeness. The bot's strategy is designed to be compliant with Australian regulations, placing bets pre-play with a "Keep" persistence type, which allows the bet to remain active after the market goes in-play.
+tennis-betting-model is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system uses Betfair's historical CSV Summary Files as the source for all core pricing and odds information and enriches it with historical match logs to ensure data completeness. The bot's strategy is designed to be compliant with Australian regulations, placing bets pre-play with a "Keep" persistence type, which allows the bet to remain active after the market goes in-play.
 
-## 🛠️ Technology Stack
+---
+🛠️ Technology Stack
+
 * **Programming Language**: Python
 * **ML Model**: XGBoost
 * **Data Manipulation**: Pandas
 * **Hyperparameter Tuning**: Optuna
-* **Data Extraction**: `tarfile`, `bz2`, `orjson`
+* **Data Extraction**: Pandas
 
-## 📂 Project Structure
-The project has been refactored to centralize all core application logic within the `src/` directory.
+---
+📂 Project Structure
+The project is structured to centralize all application logic within the `src/` directory for better maintainability.
 └── tennis-betting-model/
-├── data/
-│   ├── raw/              # Raw Betfair .tar files and historical CSVs
-│   ├── processed/        # Cleaned, consolidated data files
-│   └── analysis/         # Backtest results and outputs
-├── models/               # Saved model files (.joblib)
-├── src/
-│   └── tennis_betting_model/ # Main application source code
-│       ├── analysis/      # Backtesting and profitability analysis
-│       ├── builders/       # Feature engineering and data building
-│       ├── modeling/       # Model training and evaluation
-│       ├── pipeline/       # Live trading automation
-│       └── utils/          # Shared utilities (config, logger, etc.)
-├── .github/              # CI/CD workflows
-├── create_mapping_file.py # Helper script to map player IDs
-├── main.py               # Main CLI entrypoint
-└── config.yaml           # Project configuration
+    ├── .github/              # CI/CD workflows
+    ├── data/
+    │   ├── raw/              # Raw Betfair CSV summary files and historical CSVs
+    │   ├── processed/        # Cleaned, consolidated data files
+    │   └── analysis/         # Backtest results and outputs
+    ├── models/               # Saved model files (.joblib)
+    ├── src/
+    │   └── tennis_betting_model/ # Main application source code
+    │       ├── analysis/       # Backtesting and profitability analysis
+    │       ├── builders/       # Feature engineering and data preparation
+    │       ├── modeling/       # Model training and evaluation
+    │       ├── pipeline/       # Live trading automation
+    │       └── utils/          # Shared utilities (config, logger, etc.)
+    ├── tests/                # Unit and integration tests
+    ├── config.yaml           # Project configuration
+    ├── main.py               # Main CLI entrypoint
+    └── README.md             # This file
 
+---
+🚀 Full Project Pipeline (Commands)
+This is the complete sequence of commands to run the entire pipeline from raw data to a realistic backtest. These should be run from the project's root directory.
 
-## 🚀 Full Project Pipeline (Commands)
-This is the complete, streamlined sequence of commands to run the entire pipeline from raw data to a realistic backtest. These should be run from the project's root directory.
-
-**Step 0: Create Player Map (One-Time Setup)**
-This helper script generates a `player_mapping.csv` file by matching players between the Betfair and historical datasets. You must run this once and manually review the output file for accuracy.
+### Step 1: Prepare Raw Data
+This command prepares the most raw data assets. It consolidates player attributes, historical rankings, and combines all Betfair CSV summary files into a single raw odds file.
 ```bash
-python scripts/create_mapping_file.py
-Step 1: Prepare All Data
-This single command runs the entire data preparation pipeline: it extracts data from the raw .tar files, enriches it using the player map, and creates the final match log.
+python main.py prepare-data
+Step 2: Create Player Map (One-Time Setup)
+This helper script generates a player_mapping.csv file by matching players between the Betfair and historical datasets. You should run this once after preparing new data and manually review the output file for accuracy.
 
 Bash
 
-python main.py prepare-data
-Step 2: Build All Features & Elo Ratings
-This command reads the prepared data to calculate Elo ratings and engineer all features for the model.
+python main.py create-player-map
+Step 3: Build All Features
+This command builds all derived data assets. It enriches the raw odds data, creates the definitive match log, calculates surface-specific Elo ratings, and engineers all features for the model.
 
 Bash
 
 python main.py build
-Step 3: Train the Model
+Step 4: Train the Model
 Trains a new XGBoost model on the features generated in the previous step.
 
 Bash
 
 python main.py model
-Step 4: Run a Realistic Backtest
+Step 5: Run a Realistic Backtest
 Executes a backtest using the new model and real historical Betfair odds to gauge performance.
 
 Bash

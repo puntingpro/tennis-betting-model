@@ -20,12 +20,10 @@ def run_analyze_ev_distribution(
 ) -> pd.DataFrame:
     """
     Analyzes and filters value bets based on EV and odds thresholds.
-
     Args:
         df (pd.DataFrame): DataFrame of all identified value bets.
         ev_threshold (float): The minimum Expected Value to be included.
         max_odds (float): The maximum odds to be included.
-
     Returns:
         pd.DataFrame: A filtered DataFrame containing only bets that meet the criteria.
     """
@@ -41,11 +39,9 @@ def run_analyze_ev_distribution(
 def plot_ev_distribution(df: pd.DataFrame, ev_threshold: float) -> plt.Figure:
     """
     Generates and returns a plot showing the distribution of Expected Value.
-
     Args:
         df (pd.DataFrame): DataFrame containing expected_value data.
         ev_threshold (float): The EV threshold to display as a vertical line.
-
     Returns:
         plt.Figure: The matplotlib Figure object for the generated plot.
     """
@@ -114,11 +110,19 @@ def main_cli() -> None:
             log_info("No bets met the specified EV and odds criteria.")
             return
 
-        # Calculate ROI for the filtered bets
-        roi = (
-            (filtered_df["odds"] - 1).where(filtered_df["is_correct"], -1).sum()
-            / len(filtered_df)
-        ) * 100
+        # --- REFACTOR: Calculate ROI using the PnL column for consistency ---
+        if "pnl" in filtered_df.columns:
+            roi = (filtered_df["pnl"].sum() / len(filtered_df)) * 100
+        else:
+            # Fallback for older files without a 'pnl' column
+            log_error(
+                "Warning: 'pnl' column not found. Calculating ROI without commission."
+            )
+            roi = (
+                (filtered_df["odds"] - 1).where(filtered_df["is_correct"], -1).sum()
+                / len(filtered_df)
+            ) * 100
+
         log_success(f"Found {len(filtered_df)} value bets with ROI: {roi:.2f}%")
 
         if args.plot or args.save_plot:

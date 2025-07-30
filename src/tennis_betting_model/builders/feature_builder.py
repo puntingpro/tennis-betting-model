@@ -1,6 +1,8 @@
 import pandas as pd
 from tennis_betting_model.utils.common import get_most_recent_ranking
-from tennis_betting_model.pipeline.feature_engineering import (
+
+# --- FIX: Import from the new, logical location ---
+from tennis_betting_model.builders.feature_logic import (
     get_h2h_stats,
     get_player_form_and_win_perc,
 )

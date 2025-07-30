@@ -8,8 +8,8 @@ def load_pipeline_data(paths: dict) -> tuple:
     """Loads all necessary data sources for the pipeline."""
     log_info("Loading model and all required data sources...")
 
-    # --- MODIFIED: Use the correct consolidated file paths ---
-    df_matches = pd.read_csv(paths["consolidated_matches"])
+    # --- REFACTOR: Use the correct file path key for the match log ---
+    df_matches = pd.read_csv(paths["betfair_match_log"])
     df_matches["tourney_date"] = pd.to_datetime(
         df_matches["tourney_date"], errors="coerce"
     ).dt.tz_localize("UTC")

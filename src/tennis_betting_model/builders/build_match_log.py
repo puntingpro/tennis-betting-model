@@ -1,0 +1,102 @@
+# src/tennis_betting_model/builders/build_match_log.py
+# REFACTOR: This script is now refactored to read the consolidated summary CSV file.
+# It no longer creates an "enriched_odds" file, only the final match log.
+
+import pandas as pd
+from pathlib import Path
+from src.tennis_betting_model.utils.logger import (
+    log_info,
+    log_success,
+    log_error,
+    log_warning,
+)
+
+
+def main(config: dict):
+    """
+    Creates the historical match log from the consolidated summary file.
+    """
+    log_info("--- Creating Match Log from Summary File ---")
+    paths = config["data_paths"]
+
+    log_info("Loading consolidated raw odds and player map...")
+    raw_odds_path = Path(paths["betfair_raw_odds"])
+    map_path = Path(paths["player_map"])
+
+    if not raw_odds_path.exists() or not map_path.exists():
+        log_error(
+            "Raw odds or player map file not found. Run 'prepare-data' and 'create-player-map' first."
+        )
+        return
+
+    df_raw = pd.read_csv(raw_odds_path, parse_dates=["tourney_date"])
+    df_map = pd.read_csv(
+        map_path, dtype={"betfair_id": "int64", "historical_id": "Int64"}
+    )
+
+    log_info("Enriching summary data with historical IDs...")
+    df_enriched = pd.merge(
+        df_raw, df_map, left_on="selection_id", right_on="betfair_id", how="left"
+    )
+
+    # --- REFACTOR: Use the correct 'result' column from the summary file ---
+    # Filter for only the rows that represent a WINNER or LOSER
+    df_settled = df_enriched[df_enriched["result"].isin(["WINNER", "LOSER"])].copy()
+
+    winners = df_settled[df_settled["result"] == "WINNER"].copy()
+    losers = df_settled[df_settled["result"] == "LOSER"].copy()
+    # --- END REFACTOR ---
+
+    # Rename columns for merging
+    winners.rename(
+        columns={
+            "selection_id": "winner_id",
+            "selection_name": "winner_name",
+            "historical_id": "winner_historical_id",
+        },
+        inplace=True,
+    )
+    losers.rename(
+        columns={
+            "selection_id": "loser_id",
+            "selection_name": "loser_name",
+            "historical_id": "loser_historical_id",
+        },
+        inplace=True,
+    )
+
+    # Merge winners and losers on the same market_id
+    key_cols = ["market_id", "tourney_date", "competition_name"]
+    match_log_df = pd.merge(
+        winners[key_cols + ["winner_id", "winner_name", "winner_historical_id"]],
+        losers[key_cols + ["loser_id", "loser_name", "loser_historical_id"]],
+        on=key_cols,
+    )
+
+    match_log_df.rename(
+        columns={"competition_name": "tourney_name", "market_id": "match_id"},
+        inplace=True,
+    )
+
+    if match_log_df.empty:
+        log_warning("⚠️ No valid, settled matches were found in the summary data.")
+        return
+
+    match_log_df.sort_values(by="tourney_date", inplace=True)
+    output_path = Path(paths["betfair_match_log"])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Ensure final schema matches what downstream scripts expect
+    final_cols = [
+        "match_id",
+        "tourney_date",
+        "tourney_name",
+        "winner_id",
+        "winner_historical_id",
+        "winner_name",
+        "loser_id",
+        "loser_historical_id",
+        "loser_name",
+    ]
+    match_log_df[final_cols].to_csv(output_path, index=False)
+    log_success(f"Successfully created match log with {len(match_log_df)} entries.")

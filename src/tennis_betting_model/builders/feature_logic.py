@@ -1,4 +1,4 @@
-# src/scripts/pipeline/feature_engineering.py
+# src/tennis_betting_model/builders/feature_logic.py
 
 import pandas as pd
 
@@ -14,7 +14,6 @@ def get_h2h_stats(
         p1_id (int): The ID of player 1.
         p2_id (int): The ID of player 2.
         match_date (pd.Timestamp): The date of the current match, to exclude future games.
-
     Returns:
         tuple[int, int]: A tuple containing the number of wins for player 1 and player 2.
     """
@@ -27,7 +26,6 @@ def get_h2h_stats(
     ]
 
     p1_wins = len(h2h_matches[h2h_matches["winner_id"] == p1_id])
-    # The variable name was corrected to p2_id to correctly count player 2's wins
     p2_wins = len(h2h_matches[h2h_matches["winner_id"] == p2_id])
 
     return p1_wins, p2_wins
@@ -38,16 +36,6 @@ def get_player_form_and_win_perc(
 ) -> tuple[float, float, float]:
     """
     Calculates point-in-time win percentages and recent form for a single player.
-
-    Args:
-        df_matches (pd.DataFrame): DataFrame of all historical matches.
-        player_id (int): The ID of the player to calculate stats for.
-        surface (str): The surface of the current match (e.g., 'Hard', 'Clay').
-        match_date (pd.Timestamp): The date of the current match.
-
-    Returns:
-        tuple[float, float, float]: A tuple containing overall win percentage,
-        surface-specific win percentage, and form over the last 10 matches.
     """
     player_matches = df_matches[
         ((df_matches["winner_id"] == player_id) | (df_matches["loser_id"] == player_id))

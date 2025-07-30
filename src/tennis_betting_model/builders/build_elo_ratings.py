@@ -4,7 +4,12 @@ from dataclasses import dataclass, field
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+from typing import Any
 from tennis_betting_model.utils.config import load_config
+
+# --- FIX: Import the get_surface utility ---
+from tennis_betting_model.utils.common import get_surface
+from tennis_betting_model.utils.logger import log_warning, log_info
 
 
 @dataclass
@@ -12,23 +17,28 @@ class EloCalculator:
     k_factor: int
     rating_diff_factor: int
     initial_rating: int = 1500
-    elo_ratings: dict[int, float] = field(default_factory=dict)
+    # --- FIX: Elo ratings are now nested by surface ---
+    elo_ratings: dict[str, dict[int, float]] = field(
+        default_factory=lambda: {"Hard": {}, "Clay": {}, "Grass": {}}
+    )
 
-    def get_player_rating(self, player_id: int) -> float:
-        return self.elo_ratings.get(player_id, self.initial_rating)
+    def get_player_rating(self, player_id: int, surface: str) -> float:
+        """Gets a player's rating for a specific surface."""
+        return self.elo_ratings[surface].get(player_id, self.initial_rating)
 
-    def update_ratings(self, winner_id: int, loser_id: int) -> None:
-        winner_rating = self.get_player_rating(winner_id)
-
-        loser_rating = self.get_player_rating(loser_id)
+    def update_ratings(self, winner_id: int, loser_id: int, surface: str) -> None:
+        """Updates player ratings for a specific surface."""
+        winner_rating = self.get_player_rating(winner_id, surface)
+        loser_rating = self.get_player_rating(loser_id, surface)
 
         prob_winner_wins = 1 / (
             1 + 10 ** ((loser_rating - winner_rating) / self.rating_diff_factor)
         )
-        self.elo_ratings[winner_id] = winner_rating + self.k_factor * (
-            1 - prob_winner_wins
-        )
-        self.elo_ratings[loser_id] = loser_rating - self.k_factor * (prob_winner_wins)
+
+        rating_change = self.k_factor * (1 - prob_winner_wins)
+
+        self.elo_ratings[surface][winner_id] = winner_rating + rating_change
+        self.elo_ratings[surface][loser_id] = loser_rating - rating_change
 
 
 def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.DataFrame:
@@ -40,14 +50,12 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
         rating_diff_factor=elo_config["rating_diff_factor"],
     )
 
-    elo_results = []
+    elo_results: list[dict[str, Any]] = []
 
     match_data["tourney_date"] = pd.to_datetime(match_data["tourney_date"])
     match_data = match_data.sort_values(by="tourney_date").reset_index(drop=True)
 
-    # --- FIX: Add robust data cleaning to handle corrupted input ---
-    # Coerce non-numeric values in ID columns to NaN (Not a Number)
-
+    # Coerce non-numeric values in ID columns to NaN
     match_data["winner_historical_id"] = pd.to_numeric(
         match_data["winner_historical_id"], errors="coerce"
     )
@@ -55,26 +63,35 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
         match_data["loser_historical_id"], errors="coerce"
     )
 
-    # Drop rows where IDs are missing, as they are unusable for Elo
+    # Drop rows where IDs are missing
     match_data.dropna(
         subset=["winner_historical_id", "loser_historical_id"], inplace=True
     )
 
-    # Now that the data is clean, safely convert to integer
+    if match_data.empty:
+        return pd.DataFrame(elo_results)
+
     match_data = match_data.astype(
         {"winner_historical_id": "int64", "loser_historical_id": "int64"}
     )
-    # --- END FIX ---
+
+    # --- FIX: Determine surface for each match ---
+    match_data["surface"] = match_data["tourney_name"].apply(get_surface)
 
     for row in tqdm(
         match_data.itertuples(index=False),
         total=len(match_data),
-        desc="Calculating Elo Ratings",
+        desc="Calculating Surface-Specific Elo",
     ):
-        winner_id, loser_id = row.winner_historical_id, row.loser_historical_id
+        winner_id, loser_id, surface = (
+            row.winner_historical_id,
+            row.loser_historical_id,
+            row.surface,
+        )
 
-        winner_pre_match_elo = calculator.get_player_rating(winner_id)
-        loser_pre_match_elo = calculator.get_player_rating(loser_id)
+        # --- FIX: Get pre-match Elo for the correct surface ---
+        winner_pre_match_elo = calculator.get_player_rating(winner_id, surface)
+        loser_pre_match_elo = calculator.get_player_rating(loser_id, surface)
 
         p1_id = min(winner_id, loser_id)
         p2_id = max(winner_id, loser_id)
@@ -93,7 +110,10 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
             }
         )
 
-        calculator.update_ratings(winner_id=winner_id, loser_id=loser_id)
+        # --- FIX: Update ratings for the correct surface ---
+        calculator.update_ratings(
+            winner_id=winner_id, loser_id=loser_id, surface=surface
+        )
 
     return pd.DataFrame(elo_results)
 
@@ -103,7 +123,7 @@ def main():
     paths = config["data_paths"]
     elo_config = config.get("elo_config", {})
 
-    print("Loading match log data for Elo calculation...")
+    log_info("Loading match log data for Elo calculation...")
     match_log_path = Path(paths["betfair_match_log"])
     if not match_log_path.exists():
         raise FileNotFoundError(
@@ -119,5 +139,18 @@ def main():
 
     output_path = Path(paths["elo_ratings"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    elo_df.to_csv(output_path, index=False)
-    print(f"✅ Successfully calculated and saved Elo ratings to {output_path}")
+
+    # --- REFACTOR: Add check for empty DataFrame to prevent downstream errors ---
+    if elo_df.empty:
+        log_warning(
+            "⚠️ No matches found to calculate Elo ratings. Saving an empty Elo file with headers."
+        )
+        # Define headers to ensure downstream processes don't fail
+        headers = ["match_id", "p1_id", "p2_id", "p1_elo", "p2_elo"]
+        pd.DataFrame(columns=headers).to_csv(output_path, index=False)
+    else:
+        elo_df.to_csv(output_path, index=False)
+
+    log_info(
+        f"✅ Successfully calculated and saved Surface-Specific Elo ratings to {output_path}"
+    )

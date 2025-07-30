@@ -1,5 +1,4 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
 from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 import joblib
@@ -7,6 +6,7 @@ from pathlib import Path
 import optuna
 from typing import cast
 from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.logger import log_info, log_error
 import argparse
 
 
@@ -49,11 +49,38 @@ def train_eval_model(
 ):
     print("--- Starting Model Training and Hyperparameter Optimization ---")
 
+    # --- REFACTOR: Add a guard clause to handle empty input data ---
+    if data.empty:
+        log_error("Feature DataFrame is empty. No data available to train the model.")
+        log_error(
+            "Please ensure your raw data contains settled matches and re-run the `build` command."
+        )
+        # Create an empty model file to prevent downstream FileNotFoundError
+        model_path = Path(model_output_path)
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(None, model_path)
+        log_info(
+            f"Empty placeholder model saved to {model_path} to allow pipeline completion."
+        )
+        return
+    # --- END REFACTOR ---
+
     data.rename(
         columns=lambda c: c.replace("[", "").replace("]", "").replace("<", ""),
         inplace=True,
     )
 
+    # --- FIX START: Replace random split with time-based split ---
+
+    # 1. Ensure data is sorted chronologically
+    data["tourney_date"] = pd.to_datetime(data["tourney_date"])
+    data = data.sort_values("tourney_date").reset_index(drop=True)
+
+    print(
+        f"Dataset sorted by date, ranging from {data['tourney_date'].min().date()} to {data['tourney_date'].max().date()}."
+    )
+
+    # 2. Define features (X) and target (y)
     X = data.drop(
         columns=[
             "winner",
@@ -70,16 +97,26 @@ def train_eval_model(
 
     X = pd.get_dummies(X, columns=["p1_hand", "p2_hand"], drop_first=True)
 
-    X_train_main, X_test, y_train_main, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
-    )
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_main,
-        y_train_main,
-        test_size=0.25,
-        random_state=random_state,
-        stratify=y_train_main,
-    )
+    # 3. Perform the primary chronological split (Train vs. Test)
+    split_index = int(len(data) * (1 - test_size))
+    X_train_main = X.iloc[:split_index]
+    y_train_main = y.iloc[:split_index]
+    X_test = X.iloc[split_index:]
+    y_test = y.iloc[split_index:]
+
+    # 4. Perform the secondary chronological split for Optuna (Train vs. Validation)
+    # Using 25% of the main training set as the validation set
+    val_split_index = int(len(X_train_main) * (1 - 0.25))
+    X_train = X_train_main.iloc[:val_split_index]
+    y_train = y_train_main.iloc[:val_split_index]
+    X_val = X_train_main.iloc[val_split_index:]
+    y_val = y_train_main.iloc[val_split_index:]
+
+    print(f"Training data: {len(X_train)} samples")
+    print(f"Validation data: {len(X_val)} samples")
+    print(f"Test data: {len(X_test)} samples")
+
+    # --- FIX END ---
 
     study = optuna.create_study(direction="maximize")
     print(f"Running Optuna optimization for {n_trials} trials...")
@@ -102,6 +139,7 @@ def train_eval_model(
     final_model = xgb.XGBClassifier(
         **best_params, use_label_encoder=False, eval_metric="logloss", random_state=42
     )
+    # Train on the entire chronological training set (e.g., first 80%)
     final_model.fit(X_train_main, y_train_main)
 
     print("Evaluating final model on the hold-out test set...")
@@ -132,15 +170,17 @@ def main_cli(args):
                 f"Feature data not found at {feature_path}. Please run 'python main.py build' first."
             )
 
-        print(f"Loading feature data from {feature_path}...")
+        log_info(f"Loading feature data from {feature_path}...")
         feature_data = pd.read_csv(feature_path, low_memory=False)
 
         # Use max_training_samples from config if it exists
         max_samples = model_params.get("max_training_samples")
         if max_samples and len(feature_data) > max_samples:
-            print(
+            log_info(
                 f"Full dataset has {len(feature_data)} rows. Taking a random sample of {max_samples} for faster optimization..."
             )
+            # --- Note: Sampling should be done carefully with time-series data.
+            # For now, we keep the original logic, but a more advanced approach might sample recent data.
             feature_data = feature_data.sample(n=max_samples, random_state=42)
 
         train_eval_model(

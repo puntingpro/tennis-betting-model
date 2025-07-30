@@ -27,7 +27,11 @@ def run_pipeline_once(config: dict, dry_run: bool):
         log_info("🚀 Running in LIVE mode.")
 
     bankroll = float(betting_config.get("live_bankroll", 1000.0))
-    log_info(f"Using bankroll: ${bankroll:,.2f}")
+    # --- FIX: Load the kelly fraction for risk management ---
+    live_kelly_fraction = float(betting_config.get("live_kelly_fraction", 0.1))
+    log_info(
+        f"Using bankroll: ${bankroll:,.2f} with {live_kelly_fraction:.0%} Kelly staking."
+    )
 
     model = joblib.load(paths["model"])
     player_info_lookup, df_rankings, df_matches = load_pipeline_data(paths)
@@ -64,7 +68,8 @@ def run_pipeline_once(config: dict, dry_run: bool):
                 log_warning(f"Attempting to place {len(value_bets)} live bets...")
                 for bet in value_bets:
                     kelly_fraction = float(bet.get("kelly_fraction", 0.0))
-                    stake_to_place = bankroll * kelly_fraction
+                    # --- FIX: Apply the risk management fraction to the stake ---
+                    stake_to_place = bankroll * kelly_fraction * live_kelly_fraction
                     place_bet(
                         trading=trading,
                         market_id=bet["market_id"],
