@@ -11,6 +11,8 @@ orjson
 bz2file # Explicitly add for clarity, though it's a standard library wrapper
 thefuzz
 python-Levenshtein # Recommended for speeding up thefuzz
+scikit-learn
+unidecode
 
 # --- Analysis & Visualization ---
 matplotlib
