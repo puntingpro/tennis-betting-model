@@ -28,3 +28,17 @@ def add_ev_and_kelly(
     )
 
     return df
+
+
+def calculate_pnl(df: pd.DataFrame, commission: float = 0.05) -> pd.DataFrame:
+    """
+    Ensures a 'pnl' column exists, calculating it if necessary.
+    """
+    if "pnl" in df.columns and not df["pnl"].isnull().all():
+        return df
+
+    df["pnl"] = df.apply(
+        lambda row: (row["odds"] - 1) * (1 - commission) if row["winner"] == 1 else -1,
+        axis=1,
+    )
+    return df

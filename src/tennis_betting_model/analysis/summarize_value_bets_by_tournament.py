@@ -2,9 +2,10 @@ from pathlib import Path
 import pandas as pd
 import argparse
 from tennis_betting_model.utils.file_utils import load_dataframes
-from tennis_betting_model.utils.logger import log_success, setup_logging, log_error
+from tennis_betting_model.utils.logger import log_success, setup_logging
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.common import get_tournament_category
+from tennis_betting_model.utils.betting_math import calculate_pnl
 
 
 def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataFrame:
@@ -16,14 +17,9 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
 
     df["tourney_category"] = df["tourney_name"].apply(get_tournament_category)
 
-    # --- REFACTOR: Use the pre-calculated 'pnl' column if it exists. ---
-    if "pnl" not in df.columns:
-        log_error(
-            "Warning: 'pnl' column not found. Calculating profit without commission."
-        )
-        df["pnl"] = df.apply(
-            lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
-        )
+    # --- REFACTOR: Use the new utility function ---
+    df = calculate_pnl(df)
+    # --- END REFACTOR ---
 
     df["stake"] = 1
 

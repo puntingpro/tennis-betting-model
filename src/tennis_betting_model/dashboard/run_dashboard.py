@@ -76,13 +76,14 @@ def run() -> None:
         step=0.01,
     )
 
-    # Cast types to ensure mypy understands them correctly
     date_range_tuple = cast(Tuple[datetime.date, datetime.date], date_range)
     odds_range_tuple = cast(Tuple[float, float], odds_range)
     ev_range_tuple = cast(Tuple[float, float], ev_range)
 
     # Apply filters
-    start_date, end_date = pd.to_datetime(date_range_tuple[0]), pd.to_datetime(date_range_tuple[1])
+    start_date, end_date = pd.to_datetime(date_range_tuple[0]), pd.to_datetime(
+        date_range_tuple[1]
+    )
     df = df_full[
         (df_full["tourney_date"] >= start_date)
         & (df_full["tourney_date"] <= end_date)
@@ -127,7 +128,7 @@ def run() -> None:
         df[
             [
                 "tourney_date",
-                "match_id",
+                "market_id",
                 "odds",
                 "predicted_prob",
                 "expected_value",

@@ -9,8 +9,6 @@ from collections import defaultdict, deque
 from typing import Any, DefaultDict, Dict, Tuple
 
 from tennis_betting_model.utils.config import load_config
-
-# --- FIX: Import constants for default values ---
 from tennis_betting_model.utils.constants import DEFAULT_PLAYER_RANK, ELO_INITIAL_RATING
 from tennis_betting_model.utils.logger import (
     log_info,
@@ -179,49 +177,111 @@ def _merge_point_in_time_ranks(
     return features_df
 
 
+def _merge_stats_and_elo(
+    features_df: pd.DataFrame, df_elo: pd.DataFrame, player_stats_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Merges Elo ratings and calculated player stats into the features DataFrame."""
+    # Enforce consistent dtypes on merge keys
+    features_df["match_id"] = features_df["match_id"].astype(str)
+    df_elo["match_id"] = df_elo["match_id"].astype(str)
+    player_stats_df["match_id"] = player_stats_df["match_id"].astype(str)
+    player_stats_df["player_id"] = player_stats_df["player_id"].astype("int64")
+
+    # Merge Elo
+    merged_df = pd.merge(
+        features_df, df_elo, on=["match_id", "p1_id", "p2_id"], how="left"
+    )
+
+    # Merge stats for Player 1
+    p1_stats = player_stats_df.rename(
+        columns={
+            c: f"p1_{c}"
+            for c in player_stats_df.columns
+            if c not in ["match_id", "player_id"]
+        }
+    )
+    merged_df = pd.merge(
+        merged_df,
+        p1_stats,
+        left_on=["match_id", "p1_id"],
+        right_on=["match_id", "player_id"],
+        how="left",
+    )
+
+    # Merge stats for Player 2
+    p2_stats = player_stats_df.rename(
+        columns={
+            c: f"p2_{c}"
+            for c in player_stats_df.columns
+            if c not in ["match_id", "player_id"]
+        }
+    )
+    merged_df = pd.merge(
+        merged_df,
+        p2_stats,
+        left_on=["match_id", "p2_id"],
+        right_on=["match_id", "player_id"],
+        how="left",
+    )
+
+    # Drop helper player_id columns from merges
+    merged_df.drop(
+        columns=["player_id_x", "player_id_y"], inplace=True, errors="ignore"
+    )
+
+    return merged_df
+
+
+def _add_player_attributes(
+    features_df: pd.DataFrame, df_players: pd.DataFrame
+) -> pd.DataFrame:
+    """Adds player attributes like hand to the features DataFrame."""
+    player_info = (
+        df_players[["player_id", "hand"]]
+        .drop_duplicates("player_id")
+        .set_index("player_id")
+    )
+
+    merged_df = features_df.merge(
+        player_info, left_on="p1_id", right_index=True, how="left"
+    ).rename(columns={"hand": "p1_hand"})
+    merged_df = merged_df.merge(
+        player_info, left_on="p2_id", right_index=True, how="left"
+    ).rename(columns={"hand": "p2_hand"})
+
+    return merged_df
+
+
+def _calculate_differential_features(features_df: pd.DataFrame) -> pd.DataFrame:
+    """Calculates rank, Elo, and fatigue difference features."""
+    df = features_df.copy()
+    df["rank_diff"] = df["p1_rank"] - df["p2_rank"]
+    df["elo_diff"] = pd.to_numeric(df["p1_elo"], errors="coerce") - pd.to_numeric(
+        df["p2_elo"], errors="coerce"
+    )
+    df["fatigue_diff_7_days"] = (
+        df["p1_matches_last_7_days"] - df["p2_matches_last_7_days"]
+    )
+    df["fatigue_diff_14_days"] = (
+        df["p1_matches_last_14_days"] - df["p2_matches_last_14_days"]
+    )
+    return df
+
+
 def _assemble_final_features(
     features_df: pd.DataFrame,
     df_elo: pd.DataFrame,
     player_stats_df: pd.DataFrame,
     df_players: pd.DataFrame,
 ) -> pd.DataFrame:
-    log_info("Assembling final feature set...")
-    if features_df.empty:
-        final_columns = [
-            "match_id",
-            "tourney_date",
-            "tourney_name",
-            "surface",
-            "p1_id",
-            "p2_id",
-            "winner",
-            "p1_rank",
-            "p2_rank",
-            "rank_diff",
-            "p1_elo",
-            "p2_elo",
-            "elo_diff",
-            "p1_win_perc",
-            "p2_win_perc",
-            "p1_surface_win_perc",
-            "p2_surface_win_perc",
-            "p1_hand",
-            "p2_hand",
-            "p1_matches_last_7_days",
-            "p2_matches_last_7_days",
-            "p1_matches_last_14_days",
-            "p2_matches_last_14_days",
-            "fatigue_diff_7_days",
-            "fatigue_diff_14_days",
-        ]
-        return pd.DataFrame(columns=final_columns)
-
+    """Assembles the complete feature set from all component dataframes."""
+    # Define p1/p2 and winner columns
     features_df["p1_id"] = np.minimum(
         features_df["winner_historical_id"], features_df["loser_historical_id"]
-    )
+    ).astype("int64")
     features_df["p2_id"] = np.maximum(
         features_df["winner_historical_id"], features_df["loser_historical_id"]
-    )
+    ).astype("int64")
     features_df = features_df[features_df["p1_id"] != features_df["p2_id"]].copy()
     features_df["winner"] = (
         features_df["p1_id"] == features_df["winner_historical_id"]
@@ -235,64 +295,9 @@ def _assemble_final_features(
         p1_is_winner, features_df["loser_rank"], features_df["winner_rank"]
     )
 
-    # --- REFACTOR: Precisely enforce consistent dtypes on merge keys ---
-    # Match IDs should be strings (object)
-    features_df["match_id"] = features_df["match_id"].astype(str)
-    df_elo["match_id"] = df_elo["match_id"].astype(str)
-    player_stats_df["match_id"] = player_stats_df["match_id"].astype(str)
-
-    # Player IDs should be integers
-    features_df["p1_id"] = features_df["p1_id"].astype("int64")
-    features_df["p2_id"] = features_df["p2_id"].astype("int64")
-    df_elo["p1_id"] = df_elo["p1_id"].astype("int64")
-    df_elo["p2_id"] = df_elo["p2_id"].astype("int64")
-    player_stats_df["player_id"] = player_stats_df["player_id"].astype("int64")
-    # --- END REFACTOR ---
-
-    features_df = pd.merge(
-        features_df, df_elo, on=["match_id", "p1_id", "p2_id"], how="left"
-    )
-
-    p1_stats = player_stats_df.rename(
-        columns={
-            c: f"p1_{c}"
-            for c in player_stats_df.columns
-            if c not in ["match_id", "player_id"]
-        }
-    )
-    features_df = pd.merge(
-        features_df,
-        p1_stats,
-        left_on=["match_id", "p1_id"],
-        right_on=["match_id", "player_id"],
-        how="left",
-    )
-    p2_stats = player_stats_df.rename(
-        columns={
-            c: f"p2_{c}"
-            for c in player_stats_df.columns
-            if c not in ["match_id", "player_id"]
-        }
-    )
-    features_df = pd.merge(
-        features_df,
-        p2_stats,
-        left_on=["match_id", "p2_id"],
-        right_on=["match_id", "player_id"],
-        how="left",
-    )
-
-    player_info = (
-        df_players[["player_id", "hand"]]
-        .drop_duplicates("player_id")
-        .set_index("player_id")
-    )
-    features_df = features_df.merge(
-        player_info, left_on="p1_id", right_index=True, how="left"
-    ).rename(columns={"hand": "p1_hand"})
-    features_df = features_df.merge(
-        player_info, left_on="p2_id", right_index=True, how="left"
-    ).rename(columns={"hand": "p2_hand"})
+    # Assemble features using modular functions
+    features_df = _merge_stats_and_elo(features_df, df_elo, player_stats_df)
+    features_df = _add_player_attributes(features_df, df_players)
 
     fill_values = {
         "p1_elo": ELO_INITIAL_RATING,
@@ -308,46 +313,22 @@ def _assemble_final_features(
     }
     features_df.fillna(value=fill_values, inplace=True)
 
-    features_df["rank_diff"] = features_df["p1_rank"] - features_df["p2_rank"]
-    features_df["elo_diff"] = pd.to_numeric(
-        features_df["p1_elo"], errors="coerce"
-    ) - pd.to_numeric(features_df["p2_elo"], errors="coerce")
-    features_df["fatigue_diff_7_days"] = (
-        features_df["p1_matches_last_7_days"] - features_df["p2_matches_last_7_days"]
-    )
-    features_df["fatigue_diff_14_days"] = (
-        features_df["p1_matches_last_14_days"] - features_df["p2_matches_last_14_days"]
-    )
+    features_df = _calculate_differential_features(features_df)
 
-    final_columns = [
-        "match_id",
-        "tourney_date",
-        "tourney_name",
-        "surface",
-        "p1_id",
-        "p2_id",
-        "winner",
-        "p1_rank",
-        "p2_rank",
-        "rank_diff",
-        "p1_elo",
-        "p2_elo",
-        "elo_diff",
-        "p1_win_perc",
-        "p2_win_perc",
-        "p1_surface_win_perc",
-        "p2_surface_win_perc",
-        "p1_hand",
-        "p2_hand",
-        "p1_matches_last_7_days",
-        "p2_matches_last_7_days",
-        "p1_matches_last_14_days",
-        "p2_matches_last_14_days",
-        "fatigue_diff_7_days",
-        "fatigue_diff_14_days",
+    # --- FIX: Drop non-feature columns that cause model training to fail ---
+    cols_to_drop = [
+        "winner_id",
+        "winner_name",
+        "winner_historical_id",
+        "winner_rank",
+        "loser_id",
+        "loser_name",
+        "loser_historical_id",
+        "loser_rank",
     ]
-    existing_cols = [col for col in final_columns if col in features_df.columns]
-    return features_df[existing_cols]
+    features_df.drop(columns=cols_to_drop, inplace=True, errors="ignore")
+
+    return features_df
 
 
 def main(args):
@@ -393,6 +374,7 @@ def main(args):
     final_df = _assemble_final_features(
         features_df, df_elo, player_stats_df, df_players
     )
+
     validated_features = validate_data(final_df, "final_features", "Final Feature Set")
 
     output_path = Path(paths["consolidated_features"])

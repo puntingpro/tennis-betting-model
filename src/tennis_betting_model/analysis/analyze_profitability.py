@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import setup_logging, log_info, log_error
+from tennis_betting_model.utils.betting_math import calculate_pnl
 
 
 def print_report(df: pd.DataFrame, title: str):
@@ -13,19 +14,11 @@ def print_report(df: pd.DataFrame, title: str):
         log_info(f"\n{title}\n" + "-" * 50 + "\nNo bets in this category.\n" + "-" * 50)
         return
 
-    df_report = df.copy()
+    # --- REFACTOR: Use the new utility function to ensure PnL is calculated ---
+    df_report = calculate_pnl(df.copy())
+    # --- END REFACTOR ---
 
     total_bets = len(df_report)
-
-    # --- REFACTOR: Use the pre-calculated PnL column from the backtest. ---
-    # This ensures commission is correctly factored into the analysis.
-    if "pnl" not in df_report.columns:
-        log_error("'pnl' column not found. Run backtest first to generate it.")
-        # Fallback to a simple calculation if 'pnl' is missing
-        df_report["pnl"] = df_report.apply(
-            lambda row: (row["odds"] - 1) if row["winner"] == 1 else -1, axis=1
-        )
-
     total_pnl = df_report["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
     win_rate = (df_report["winner"].sum() / total_bets) * 100 if total_bets > 0 else 0

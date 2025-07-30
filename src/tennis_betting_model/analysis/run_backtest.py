@@ -10,108 +10,79 @@ from tennis_betting_model.utils.logger import (
     setup_logging,
 )
 from tennis_betting_model.utils.config import load_config
-from tennis_betting_model.utils.betting_math import add_ev_and_kelly
+from tennis_betting_model.utils.betting_math import add_ev_and_kelly, calculate_pnl
 from tennis_betting_model.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
 
 
-def run_simulation_backtest(df, model, ev_threshold, confidence_threshold):
-    # This function remains unchanged
-    log_info("Simulating odds based on Elo and finding value...")
-    df["p1_predicted_prob"] = model.predict_proba(df[model.feature_names_in_])[:, 1]
-    df["p2_predicted_prob"] = 1 - df["p1_predicted_prob"]
-    df["p1_elo_prob"] = 1 / (1 + 10 ** ((df["p2_elo"] - df["p1_elo"]) / 400))
-    df["p2_elo_prob"] = 1 - df["p1_elo_prob"]
-    df["p1_odds"] = np.where(
-        df["p1_elo_prob"] > 0,
-        (1 / df["p1_elo_prob"]) / BOOKMAKER_MARGIN,
-        BACKTEST_MAX_ODDS,
-    )
-    df["p1_odds"] = df["p1_odds"].clip(upper=BACKTEST_MAX_ODDS)
-    df["p2_odds"] = np.where(
-        df["p2_elo_prob"] > 0,
-        (1 / df["p2_elo_prob"]) / BOOKMAKER_MARGIN,
-        BACKTEST_MAX_ODDS,
-    )
-    df["p2_odds"] = df["p2_odds"].clip(upper=BACKTEST_MAX_ODDS)
-    base_cols = ["match_id", "tourney_name", "tourney_date"]
-    bets_p1 = df[base_cols + ["winner"]].copy()
-    bets_p1["odds"] = df["p1_odds"]
-    bets_p1["predicted_prob"] = df["p1_predicted_prob"]
-    bets_p2 = df[base_cols + ["winner"]].copy()
-    bets_p2["odds"] = df["p2_odds"]
-    bets_p2["predicted_prob"] = df["p2_predicted_prob"]
-    bets_p2["winner"] = 1 - bets_p2["winner"]
-    bets_p1 = add_ev_and_kelly(bets_p1)
-    bets_p2 = add_ev_and_kelly(bets_p2)
-    value_bets_p1 = bets_p1[
-        (bets_p1["expected_value"] > ev_threshold)
-        & (bets_p1["predicted_prob"] > confidence_threshold)
-    ]
-    value_bets_p2 = bets_p2[
-        (bets_p2["expected_value"] > ev_threshold)
-        & (bets_p2["predicted_prob"] > confidence_threshold)
-    ]
-    return pd.concat([value_bets_p1, value_bets_p2], ignore_index=True)
-
-
-def run_realistic_backtest(
-    df, model, market_data_df, ev_threshold, confidence_threshold
+def run_backtest(
+    df, model, ev_threshold, confidence_threshold, mode, market_data_df=None
 ):
     """
-    REFACTOR: Runs backtest using pre-built historical market data.
-    This function is now much simpler.
+    A unified function to run backtests in either 'simulation' or 'realistic' mode.
     """
-    log_info("Merging model features with clean market data...")
-    df["tourney_date"] = pd.to_datetime(df["tourney_date"]).dt.date
-    market_data_df["tourney_date"] = pd.to_datetime(
-        market_data_df["tourney_date"]
-    ).dt.date
+    if mode == "simulation":
+        log_info("Simulating odds based on Elo and finding value...")
+        df["p1_elo_prob"] = 1 / (1 + 10 ** ((df["p2_elo"] - df["p1_elo"]) / 400))
+        df["p2_elo_prob"] = 1 - df["p1_elo_prob"]
+        df["p1_odds"] = np.where(
+            df["p1_elo_prob"] > 0,
+            (1 / df["p1_elo_prob"]) / BOOKMAKER_MARGIN,
+            BACKTEST_MAX_ODDS,
+        ).clip(upper=BACKTEST_MAX_ODDS)
+        df["p2_odds"] = np.where(
+            df["p2_elo_prob"] > 0,
+            (1 / df["p2_elo_prob"]) / BOOKMAKER_MARGIN,
+            BACKTEST_MAX_ODDS,
+        ).clip(upper=BACKTEST_MAX_ODDS)
 
-    # Use historical_id from features (p1_id, p2_id) to merge with market data
-    merged_df = pd.merge(df, market_data_df, on=["p1_id", "p2_id", "tourney_date"])
+        bets_df = df.copy()
+        bets_df.rename(columns={"match_id": "market_id"}, inplace=True)
 
-    if merged_df.empty:
-        log_error("Could not merge any features with the backtest market data.")
-        return pd.DataFrame()
+    elif mode == "realistic":
+        log_info("Merging model features with clean market data...")
+        df["tourney_date"] = pd.to_datetime(df["tourney_date"]).dt.date
+        market_data_df["tourney_date"] = pd.to_datetime(
+            market_data_df["tourney_date"]
+        ).dt.date
 
-    log_info(f"Successfully merged {len(merged_df)} markets. Making predictions...")
-    merged_df["p1_predicted_prob"] = model.predict_proba(
-        merged_df[model.feature_names_in_]
+        bets_df = pd.merge(df, market_data_df, on=["p1_id", "p2_id", "tourney_date"])
+        if bets_df.empty:
+            log_error("Could not merge any features with the backtest market data.")
+            return pd.DataFrame()
+        log_info(f"Successfully merged {len(bets_df)} markets. Making predictions...")
+
+        # Use winner data from the market file
+        bets_df.rename(columns={"winner_y": "winner"}, inplace=True)
+
+    else:
+        raise ValueError(f"Invalid mode '{mode}'. Choose 'simulation' or 'realistic'.")
+
+    # --- Common Logic: Predictions and Value Calculation ---
+    bets_df["p1_predicted_prob"] = model.predict_proba(
+        bets_df[model.feature_names_in_]
     )[:, 1]
-    merged_df["p2_predicted_prob"] = 1 - merged_df["p1_predicted_prob"]
+    bets_df["p2_predicted_prob"] = 1 - bets_df["p1_predicted_prob"]
 
-    # --- REFACTOR: Add 'tourney_name' to the output columns ---
-    bets_p1 = (
-        merged_df[["market_id", "tourney_name", "tourney_date", "winner_y"]]
-        .copy()
-        .rename(columns={"winner_y": "winner", "market_id": "match_id"})
-    )
-    bets_p1["odds"] = merged_df["p1_odds"]
-    bets_p1["predicted_prob"] = merged_df["p1_predicted_prob"]
+    base_cols = ["market_id", "tourney_name", "tourney_date", "winner"]
 
-    bets_p2 = (
-        merged_df[["market_id", "tourney_name", "tourney_date", "winner_y"]]
-        .copy()
-        .rename(columns={"winner_y": "winner", "market_id": "match_id"})
-    )
-    # --- END REFACTOR ---
-    bets_p2["odds"] = merged_df["p2_odds"]
-    bets_p2["predicted_prob"] = merged_df["p2_predicted_prob"]
+    bets_p1 = bets_df[base_cols].copy()
+    bets_p1["odds"] = bets_df["p1_odds"]
+    bets_p1["predicted_prob"] = bets_df["p1_predicted_prob"]
+
+    bets_p2 = bets_df[base_cols].copy()
+    bets_p2["odds"] = bets_df["p2_odds"]
+    bets_p2["predicted_prob"] = bets_df["p2_predicted_prob"]
     bets_p2["winner"] = 1 - bets_p2["winner"]
 
-    bets_p1 = add_ev_and_kelly(bets_p1)
-    bets_p2 = add_ev_and_kelly(bets_p2)
+    all_bets = pd.concat(
+        [add_ev_and_kelly(bets_p1), add_ev_and_kelly(bets_p2)], ignore_index=True
+    )
 
-    value_bets_p1 = bets_p1[
-        (bets_p1["expected_value"] > ev_threshold)
-        & (bets_p1["predicted_prob"] > confidence_threshold)
+    value_bets = all_bets[
+        (all_bets["expected_value"] > ev_threshold)
+        & (all_bets["predicted_prob"] > confidence_threshold)
     ]
-    value_bets_p2 = bets_p2[
-        (bets_p2["expected_value"] > ev_threshold)
-        & (bets_p2["predicted_prob"] > confidence_threshold)
-    ]
-
-    return pd.concat([value_bets_p1, value_bets_p2], ignore_index=True)
+    return value_bets
 
 
 def main(args):
@@ -130,8 +101,6 @@ def main(args):
     features_df = pd.read_csv(
         paths["consolidated_features"], parse_dates=["tourney_date"]
     )
-
-    # Rename historical_id columns to p1_id and p2_id for merging
     features_df.rename(
         columns={"winner_historical_id": "p1_id", "loser_historical_id": "p2_id"},
         inplace=True,
@@ -151,11 +120,8 @@ def main(args):
         model.feature_names_in_
     ].fillna(0)
 
-    if args.mode == "simulation":
-        final_value_bets = run_simulation_backtest(
-            features_df, model, ev_threshold, confidence_threshold
-        )
-    elif args.mode == "realistic":
+    market_data_df = None
+    if args.mode == "realistic":
         try:
             log_info(
                 f"Loading clean backtest market data from {paths['backtest_market_data']}..."
@@ -163,30 +129,30 @@ def main(args):
             market_data_df = pd.read_csv(
                 paths["backtest_market_data"], parse_dates=["tourney_date"]
             )
-            final_value_bets = run_realistic_backtest(
-                features_df, model, market_data_df, ev_threshold, confidence_threshold
-            )
         except FileNotFoundError:
             log_error(
-                "Required file not found. Please ensure the 'build' command has been run to create backtest market data."
+                "Required file not found. Please run the 'build' command to create backtest market data."
             )
             return
-    else:
-        log_error(f"Invalid mode '{args.mode}'. Choose 'simulation' or 'realistic'.")
-        return
+
+    final_value_bets = run_backtest(
+        features_df,
+        model,
+        ev_threshold,
+        confidence_threshold,
+        args.mode,
+        market_data_df,
+    )
 
     if final_value_bets.empty:
         log_info("No value bets found for the selected mode.")
         return
 
     betfair_commission = betting_params.get("betfair_commission", 0.05)
-    final_value_bets = final_value_bets.copy()
-    final_value_bets["pnl"] = final_value_bets.apply(
-        lambda row: (row["odds"] - 1) * (1 - betfair_commission)
-        if row["winner"] == 1
-        else -1,
-        axis=1,
+    final_value_bets = calculate_pnl(
+        final_value_bets.copy(), commission=betfair_commission
     )
+
     total_bets = len(final_value_bets)
     total_pnl = final_value_bets["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
