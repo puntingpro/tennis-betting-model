@@ -8,7 +8,6 @@ from typing import cast
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import log_info, log_error
 import argparse
-from xgboost.callback import EarlyStopping
 
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -27,12 +26,14 @@ def objective(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float:
         "gamma": trial.suggest_float("gamma", 0, 5),
     }
 
-    model = xgb.XGBClassifier(**params, random_state=42)
+    # Set early_stopping_rounds in the constructor
+    model = xgb.XGBClassifier(**params, random_state=42, early_stopping_rounds=50)
+
+    # Remove callbacks/early_stopping_rounds from the .fit() call
     model.fit(
         X_train,
         y_train,
         eval_set=[(X_val, y_val)],
-        callbacks=[EarlyStopping(rounds=50, save_best=True)],
         verbose=False,
     )
 
