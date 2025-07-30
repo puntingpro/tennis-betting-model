@@ -8,9 +8,9 @@ requests
 betfairlightweight
 pandera
 orjson
-bz2file # Explicitly add for clarity, though it's a standard library wrapper
+bz2file
 thefuzz
-python-Levenshtein # Recommended for speeding up thefuzz
+python-Levenshtein
 scikit-learn
 unidecode
 
