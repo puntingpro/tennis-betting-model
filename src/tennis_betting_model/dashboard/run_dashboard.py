@@ -76,7 +76,7 @@ def run() -> None:
 
     # Apply filters
     start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-    df = df_full[
+    df = df_full[  # type: ignore[misc]
         (df_full["tourney_date"] >= start_date)
         & (df_full["tourney_date"] <= end_date)
         & (df_full["odds"] >= odds_range[0])
