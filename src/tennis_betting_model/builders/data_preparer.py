@@ -26,14 +26,13 @@ def consolidate_player_attributes(config: dict):
     log_info("Loading ATP and WTA player attribute files...")
     player_cols = ["player_id", "first_name", "last_name", "hand", "dob", "country_ioc"]
 
-    # --- FIX: Enforce dtypes on read to prevent DtypeWarning ---
     df_atp = pd.read_csv(
         atp_players_path,
         header=None,
         encoding="latin-1",
         usecols=range(6),
         names=player_cols,
-        dtype={"player_id": str, "dob": str},  # Read IDs and dates as strings first
+        dtype={"player_id": str, "dob": str},
     )
     df_wta = pd.read_csv(
         wta_players_path,
@@ -41,13 +40,12 @@ def consolidate_player_attributes(config: dict):
         encoding="latin-1",
         usecols=range(6),
         names=player_cols,
-        dtype={"player_id": str, "dob": str},  # Read IDs and dates as strings first
+        dtype={"player_id": str, "dob": str},
     )
 
     log_info("Combining files and removing duplicate player entries...")
     combined_df = pd.concat([df_atp, df_wta], ignore_index=True)
 
-    # --- FIX: Robustly clean player_id column ---
     combined_df["player_id"] = pd.to_numeric(combined_df["player_id"], errors="coerce")
     combined_df.dropna(subset=["player_id"], inplace=True)
     combined_df["player_id"] = combined_df["player_id"].astype(int)
@@ -72,19 +70,20 @@ def consolidate_rankings(config: dict):
     df_list = []
     for f in all_files:
         if Path(f).stat().st_size > 0:
-            # --- FIX: Read all columns as strings to prevent DtypeWarning ---
             df_list.append(pd.read_csv(f, header=None, dtype=str))
 
     combined_df = pd.concat(df_list, ignore_index=True)
 
+    # --- FIX: Cast column lists to a pd.Index to resolve mypy error ---
     if combined_df.shape[1] == 4:
-        combined_df.columns = ["ranking_date", "rank", "player", "points"]  # type: ignore
+        combined_df.columns = pd.Index(["ranking_date", "rank", "player", "points"])
     elif combined_df.shape[1] == 5:
-        combined_df.columns = ["ranking_date", "rank", "player", "points", "tours"]  # type: ignore
+        combined_df.columns = pd.Index(
+            ["ranking_date", "rank", "player", "points", "tours"]
+        )
 
-    # --- FIX: Robustly clean and convert columns ---
     combined_df["ranking_date"] = pd.to_datetime(
-        combined_df["ranking_date"], errors="coerce", format="%Y%m%d"
+        combined_df["ranking_date"], errors="coerce", format="%Y%m%d", utc=True
     )
     combined_df["rank"] = pd.to_numeric(combined_df["rank"], errors="coerce")
     combined_df["player"] = pd.to_numeric(combined_df["player"], errors="coerce")

@@ -13,14 +13,16 @@ def get_most_recent_ranking(
     Finds the most recent ranking for a player prior to a given date.
     Assumes df_rankings is sorted by ranking_date.
     """
+    # --- FINAL FIX: Defensively make match_date timezone-aware to match df_rankings ---
+    if match_date.tzinfo is None:
+        match_date = match_date.tz_localize("UTC")
+
     player_rankings = df_rankings[
         (df_rankings["player"] == player_id)
         & (df_rankings["ranking_date"] < match_date)
     ]
 
     if not player_rankings.empty:
-        # Reverting to the 'cast' version, as the file-level ignore
-        # will handle the mypy error.
         return cast(int, player_rankings["rank"].iloc[-1])
 
     return DEFAULT_PLAYER_RANK

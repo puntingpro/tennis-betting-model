@@ -44,12 +44,10 @@ class MarketProcessor:
             win_prob_p2 = Decimal("1.0") - win_prob_p1
 
             value_bets = []
-            # Check player 1 for value
             if p1_book.ex.available_to_back:
                 p1_odds = Decimal(str(p1_book.ex.available_to_back[0].price))
                 p1_ev = (win_prob_p1 * p1_odds) - Decimal("1.0")
                 if p1_ev > self.ev_threshold:
-                    # --- FIX: Calculate Kelly Criterion ---
                     kelly_denominator = p1_odds - Decimal("1.0")
                     p1_kelly = (
                         (p1_ev / kelly_denominator)
@@ -67,12 +65,10 @@ class MarketProcessor:
                         )
                     )
 
-            # Check player 2 for value
             if p2_book.ex.available_to_back:
                 p2_odds = Decimal(str(p2_book.ex.available_to_back[0].price))
                 p2_ev = (win_prob_p2 * p2_odds) - Decimal("1.0")
                 if p2_ev > self.ev_threshold:
-                    # --- FIX: Calculate Kelly Criterion ---
                     kelly_denominator = p2_odds - Decimal("1.0")
                     p2_kelly = (
                         (p2_ev / kelly_denominator)
@@ -101,14 +97,7 @@ class MarketProcessor:
     def _build_live_features(self, market_catalogue) -> dict | None:
         """Builds features for a live market."""
         p1_meta, p2_meta = market_catalogue.runners
-
-        try:
-            p1_id, p2_id = int(p1_meta.selection_id), int(p2_meta.selection_id)
-        except (ValueError, TypeError):
-            log_warning(
-                f"Invalid selection ID in market {market_catalogue.market_id}. Skipping."
-            )
-            return None
+        p1_id, p2_id = int(p1_meta.selection_id), int(p2_meta.selection_id)
 
         surface = "Hard"
         if market_catalogue.market_name:
@@ -122,12 +111,14 @@ class MarketProcessor:
             "UTC"
         )
 
+        # --- FIX: Pass match_id to build_features ---
+        # Live markets don't have a historical match_id, so we use the market_id
+        # The FeatureBuilder will handle cases where this ID isn't in the Elo table
         features = self.feature_builder.build_features(
-            p1_id, p2_id, surface, match_date
+            p1_id, p2_id, surface, match_date, match_id=market_catalogue.market_id
         )
         return cast(Dict[str, Any], features)
 
-    # --- FIX: Updated function to accept and add kelly_fraction ---
     def _create_bet_info(self, market, runner_meta, odds, prob, ev, kelly) -> dict:
         """Creates a formatted dictionary for an identified value bet."""
         bet_info = {
@@ -153,6 +144,7 @@ def process_markets(
     player_info_lookup,
     df_rankings,
     df_matches,
+    df_elo,  # --- FIX: Accept the new df_elo DataFrame ---
     betting_config,
 ):
     """
@@ -160,7 +152,10 @@ def process_markets(
     """
     log_info(f"Processing {len(market_catalogues)} live markets...")
 
-    feature_builder = FeatureBuilder(player_info_lookup, df_rankings, df_matches)
+    # --- FIX: Pass df_elo to the FeatureBuilder ---
+    feature_builder = FeatureBuilder(
+        player_info_lookup, df_rankings, df_matches, df_elo
+    )
     market_processor = MarketProcessor(model, feature_builder, betting_config)
 
     all_value_bets = []

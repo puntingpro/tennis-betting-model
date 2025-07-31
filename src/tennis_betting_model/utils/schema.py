@@ -1,7 +1,7 @@
 import pandas as pd
 import pandera as pa
 from pandera.typing import Series
-from typing import cast
+from typing import cast, Optional
 from .logger import log_info, log_error, log_success
 
 
@@ -17,32 +17,59 @@ class BetfairMatchLogSchema(pa.DataFrameModel):
     loser_id: Series[int] = pa.Field(coerce=True)
     loser_historical_id: Series[float] = pa.Field(coerce=True, nullable=True)
     loser_name: Series[str] = pa.Field(nullable=True)
+    # --- FIX: Add the new 'surface' column to the schema ---
+    surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass"])
 
     class Config:
-        strict = True  # Ensure no extra columns exist
+        strict = True
         coerce = True
 
 
 class FinalFeaturesSchema(pa.DataFrameModel):
-    """Schema for the final feature-engineered DataFrame before model training."""
+    """
+    Schema for the final feature-engineered DataFrame before model training.
+    """
 
+    # Match context
     match_id: Series[str] = pa.Field(nullable=False)
-    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False)
+    tourney_date: Series[pa.DateTime] = pa.Field(nullable=False, coerce=True)
+    tourney_name: Series[str] = pa.Field(nullable=True)
     surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass"])
+
+    # Player identifiers
     p1_id: Series[int] = pa.Field(coerce=True)
     p2_id: Series[int] = pa.Field(coerce=True)
-    winner: Series[int] = pa.Field(isin=[0, 1])
+
+    # Core features
     p1_rank: Series[float] = pa.Field(nullable=False, coerce=True)
     p2_rank: Series[float] = pa.Field(nullable=False, coerce=True)
     rank_diff: Series[float] = pa.Field(nullable=False, coerce=True)
-    elo_diff: Series[float] = pa.Field(nullable=True, coerce=True)
+    p1_elo: Series[float] = pa.Field(nullable=False, coerce=True)
+    p2_elo: Series[float] = pa.Field(nullable=False, coerce=True)
+    elo_diff: Series[float] = pa.Field(nullable=False, coerce=True)
     p1_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
     p2_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
     p1_surface_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
     p2_surface_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    p1_matches_last_7_days: Series[int] = pa.Field(ge=0, coerce=True)
+    p2_matches_last_7_days: Series[int] = pa.Field(ge=0, coerce=True)
+    p1_matches_last_14_days: Series[int] = pa.Field(ge=0, coerce=True)
+    p2_matches_last_14_days: Series[int] = pa.Field(ge=0, coerce=True)
+    fatigue_diff_7_days: Series[int] = pa.Field(coerce=True)
+    fatigue_diff_14_days: Series[int] = pa.Field(coerce=True)
+    h2h_p1_wins: Series[int] = pa.Field(ge=0, coerce=True)
+    h2h_p2_wins: Series[int] = pa.Field(ge=0, coerce=True)
+
+    # Target variable
+    winner: Series[int] = pa.Field(isin=[0, 1])
+
+    p1_hand_R: Optional[Series[int]] = pa.Field(isin=[0, 1])
+    p1_hand_U: Optional[Series[int]] = pa.Field(isin=[0, 1])
+    p2_hand_R: Optional[Series[int]] = pa.Field(isin=[0, 1])
+    p2_hand_U: Optional[Series[int]] = pa.Field(isin=[0, 1])
 
     class Config:
-        strict = False  # Allow other feature columns
+        strict = False
         coerce = True
 
 
@@ -68,7 +95,6 @@ def validate_data(df: pd.DataFrame, schema_name: str, context: str) -> pd.DataFr
     except pa.errors.SchemaErrors as err:
         log_error(f"❌ Schema validation failed for: {context}")
         log_error("Validation errors:")
-        # Display simplified error report
         failure_cases = err.failure_cases
         failure_cases["failure_case"] = failure_cases["failure_case"].astype(str)
         log_error(

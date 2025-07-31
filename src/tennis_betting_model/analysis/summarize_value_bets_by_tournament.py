@@ -17,9 +17,7 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
 
     df["tourney_category"] = df["tourney_name"].apply(get_tournament_category)
 
-    # --- REFACTOR: Use the new utility function ---
     df = calculate_pnl(df)
-    # --- END REFACTOR ---
 
     df["stake"] = 1
 
@@ -27,7 +25,7 @@ def run_summarize_by_tournament(df: pd.DataFrame, min_bets: int = 1) -> pd.DataF
         df.groupby("tourney_category")
         .agg(
             total_bets=("stake", "sum"),
-            total_pnl=("pnl", "sum"),  # Use pnl column for aggregation
+            total_pnl=("pnl", "sum"),
             tournaments=("tourney_name", lambda x: sorted(x.unique().tolist())),
         )
         .reset_index()
@@ -48,9 +46,12 @@ def main_cli(args: argparse.Namespace) -> None:
     setup_logging()
     config = load_config(args.config)
     paths = config["data_paths"]
+    # --- REFACTOR: Get min_bets from config file ---
+    analysis_params = config.get("analysis_params", {})
+    min_bets_threshold = analysis_params.get("min_bets_for_summary", 100)
 
     df = load_dataframes(paths["backtest_results"])
-    summary_df = run_summarize_by_tournament(df, args.min_bets)
+    summary_df = run_summarize_by_tournament(df, min_bets_threshold)
 
     if not summary_df.empty:
         log_success("✅ Successfully summarized tournaments by category.")
@@ -59,7 +60,9 @@ def main_cli(args: argparse.Namespace) -> None:
         if not args.show_tournaments:
             display_df = display_df.drop(columns=["tournaments"])
 
-        print(f"\n--- Tournament Category Performance (min_bets={args.min_bets}) ---")
+        print(
+            f"\n--- Tournament Category Performance (min_bets={min_bets_threshold}) ---"
+        )
         print(display_df.to_string(index=False))
 
         output_path = Path(paths["tournament_summary"])
@@ -75,12 +78,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config", default="config.yaml", help="Path to the config file."
     )
-    parser.add_argument(
-        "--min-bets",
-        type=int,
-        default=100,
-        help="The minimum number of total bets required to include a tournament category in the summary.",
-    )
+    # --- REFACTOR: The --min-bets argument is removed as it's now controlled by config. ---
     parser.add_argument(
         "--show-tournaments",
         action="store_true",

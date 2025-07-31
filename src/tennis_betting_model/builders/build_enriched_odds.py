@@ -1,7 +1,4 @@
 # src/tennis_betting_model/builders/build_enriched_odds.py
-# REFACTOR: This script no longer processes TAR files.
-# It now consolidates all summary CSV files into a single raw data asset.
-
 import pandas as pd
 import glob
 import os
@@ -39,17 +36,16 @@ def main():
     df_list = [pd.read_csv(f) for f in summary_files]
     combined_df = pd.concat(df_list, ignore_index=True)
 
-    # --- REFACTOR: Correctly create the 'tourney_date' column from 'event_date' ---
     if "event_date" not in combined_df.columns:
         log_error(
             "Critical error: 'event_date' column not found in the source summary CSV file."
         )
         return
 
+    # --- FIX: Convert tourney_date to UTC and handle DD/MM/YYYY format ---
     combined_df["tourney_date"] = pd.to_datetime(
-        combined_df["event_date"], errors="coerce"
+        combined_df["event_date"], errors="coerce", dayfirst=True, utc=True
     )
-    # --- END REFACTOR ---
 
     combined_df.dropna(
         subset=["tourney_date", "market_id", "selection_id"], inplace=True

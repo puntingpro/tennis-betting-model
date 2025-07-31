@@ -1,7 +1,4 @@
 # src/tennis_betting_model/builders/build_match_log.py
-# REFACTOR: This script is now refactored to read the consolidated summary CSV file.
-# It no longer creates an "enriched_odds" file, only the final match log.
-
 import pandas as pd
 from pathlib import Path
 from src.tennis_betting_model.utils.logger import (
@@ -29,7 +26,10 @@ def main(config: dict):
         )
         return
 
+    # --- FIX: Ensure date column is parsed as timezone-aware ---
     df_raw = pd.read_csv(raw_odds_path, parse_dates=["tourney_date"])
+    df_raw["tourney_date"] = pd.to_datetime(df_raw["tourney_date"], utc=True)
+
     df_map = pd.read_csv(
         map_path, dtype={"betfair_id": "int64", "historical_id": "Int64"}
     )
@@ -39,15 +39,11 @@ def main(config: dict):
         df_raw, df_map, left_on="selection_id", right_on="betfair_id", how="left"
     )
 
-    # --- REFACTOR: Use the correct 'result' column from the summary file ---
-    # Filter for only the rows that represent a WINNER or LOSER
     df_settled = df_enriched[df_enriched["result"].isin(["WINNER", "LOSER"])].copy()
 
     winners = df_settled[df_settled["result"] == "WINNER"].copy()
     losers = df_settled[df_settled["result"] == "LOSER"].copy()
-    # --- END REFACTOR ---
 
-    # Rename columns for merging
     winners.rename(
         columns={
             "selection_id": "winner_id",
@@ -65,7 +61,6 @@ def main(config: dict):
         inplace=True,
     )
 
-    # Merge winners and losers on the same market_id
     key_cols = ["market_id", "tourney_date", "competition_name"]
     match_log_df = pd.merge(
         winners[key_cols + ["winner_id", "winner_name", "winner_historical_id"]],
@@ -86,7 +81,6 @@ def main(config: dict):
     output_path = Path(paths["betfair_match_log"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Ensure final schema matches what downstream scripts expect
     final_cols = [
         "match_id",
         "tourney_date",

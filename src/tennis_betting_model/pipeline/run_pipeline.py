@@ -1,4 +1,3 @@
-import argparse
 import joblib
 from tennis_betting_model.utils.logger import setup_logging, log_info, log_warning
 from tennis_betting_model.utils.config import load_config
@@ -27,14 +26,15 @@ def run_pipeline_once(config: dict, dry_run: bool):
         log_info("🚀 Running in LIVE mode.")
 
     bankroll = float(betting_config.get("live_bankroll", 1000.0))
-    # --- FIX: Load the kelly fraction for risk management ---
     live_kelly_fraction = float(betting_config.get("live_kelly_fraction", 0.1))
     log_info(
         f"Using bankroll: ${bankroll:,.2f} with {live_kelly_fraction:.0%} Kelly staking."
     )
 
     model = joblib.load(paths["model"])
-    player_info_lookup, df_rankings, df_matches = load_pipeline_data(paths)
+
+    # --- FIX: Unpack the new df_elo DataFrame ---
+    player_info_lookup, df_rankings, df_matches, df_elo = load_pipeline_data(paths)
 
     trading = login_to_betfair(config)
     try:
@@ -60,6 +60,7 @@ def run_pipeline_once(config: dict, dry_run: bool):
             player_info_lookup,
             df_rankings,
             df_matches,
+            df_elo,  # --- FIX: Pass df_elo to process_markets ---
             betting_config,
         )
 
@@ -68,7 +69,6 @@ def run_pipeline_once(config: dict, dry_run: bool):
                 log_warning(f"Attempting to place {len(value_bets)} live bets...")
                 for bet in value_bets:
                     kelly_fraction = float(bet.get("kelly_fraction", 0.0))
-                    # --- FIX: Apply the risk management fraction to the stake ---
                     stake_to_place = bankroll * kelly_fraction * live_kelly_fraction
                     place_bet(
                         trading=trading,
@@ -95,15 +95,3 @@ def main_cli(args):
     setup_logging()
     config = load_config(args.config)
     run_pipeline_once(config, args.dry_run)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="config.yaml", help="Path to config file.")
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Run in dry-run mode without placing bets.",
-    )
-    cli_args = parser.parse_args()
-    main_cli(cli_args)

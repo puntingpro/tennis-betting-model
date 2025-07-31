@@ -30,12 +30,15 @@ def main_cli(args):
     setup_logging()
     config = load_config(args.config)
     paths = config["data_paths"]
+    # --- REFACTOR: Get top_n from config file ---
+    analysis_params = config.get("analysis_params", {})
+    leaderboard_top_n = analysis_params.get("leaderboard_top_n", 25)
 
     try:
         input_path = Path(paths["tournament_summary"])
         df = pd.read_csv(input_path)
 
-        fig = run_plot_leaderboard(df, sort_by="roi", top_n=25)
+        fig = run_plot_leaderboard(df, sort_by="roi", top_n=leaderboard_top_n)
 
         plot_dir = Path(paths.get("plot_dir", "data/plots/"))
         output_path = plot_dir / "tournament_leaderboard.png"
@@ -44,7 +47,8 @@ def main_cli(args):
         fig.savefig(output_path, dpi=300)
         log_success(f"Saved leaderboard plot to {output_path}")
 
-        plt.show()
+        if args.show_plot:
+            plt.show()
 
     except FileNotFoundError:
         log_error(f"Input file not found: {paths['tournament_summary']}")
@@ -55,5 +59,9 @@ def main_cli(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml", help="Path to config file.")
+    # --- REFACTOR: Add argument to control plot display ---
+    parser.add_argument(
+        "--show-plot", action="store_true", help="Display the plot interactively."
+    )
     args = parser.parse_args()
     main_cli(args)

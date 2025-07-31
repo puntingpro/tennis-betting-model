@@ -1,12 +1,11 @@
 # src/tennis_betting_model/builders/build_backtest_data.py
-# REFACTOR: This script is now refactored to read the consolidated summary CSV file.
-
 import pandas as pd
 from pathlib import Path
 from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
     log_error,
+    log_warning,
     setup_logging,
 )
 from tennis_betting_model.utils.config import load_config
@@ -27,22 +26,77 @@ def main():
         map_path = Path(paths["player_map"])
         output_path = Path(paths["backtest_market_data"])
 
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
         log_info(f"Loading consolidated summary data from {raw_odds_path}...")
         df_raw = pd.read_csv(raw_odds_path, parse_dates=["tourney_date"])
         df_map = pd.read_csv(
             map_path, dtype={"betfair_id": "int64", "historical_id": "Int64"}
         )
 
+        # --- REFACTOR: Add check for empty input files ---
+        if df_raw.empty or df_map.empty:
+            log_warning("Raw odds or player map is empty. Cannot build backtest data.")
+            # Save an empty file with headers to prevent downstream errors
+            pd.DataFrame(
+                columns=[
+                    "market_id",
+                    "tourney_date",
+                    "p1_id",
+                    "p2_id",
+                    "p1_odds",
+                    "p2_odds",
+                    "winner",
+                ]
+            ).to_csv(output_path, index=False)
+            return
+
         df_enriched = pd.merge(
             df_raw, df_map, left_on="selection_id", right_on="betfair_id", how="left"
         )
         df_enriched.dropna(subset=["historical_id"], inplace=True)
+
+        # --- REFACTOR: Add check after merging and dropping nulls ---
+        if df_enriched.empty:
+            log_warning(
+                "No players could be mapped to a historical ID. Cannot build backtest data."
+            )
+            pd.DataFrame(
+                columns=[
+                    "market_id",
+                    "tourney_date",
+                    "p1_id",
+                    "p2_id",
+                    "p1_odds",
+                    "p2_odds",
+                    "winner",
+                ]
+            ).to_csv(output_path, index=False)
+            return
 
         # Count runners per market to ensure we only process 2-runner markets
         market_counts = (
             df_enriched.groupby("market_id").size().reset_index(name="runner_count")
         )
         two_runner_markets = market_counts[market_counts["runner_count"] == 2]
+
+        if two_runner_markets.empty:
+            log_warning(
+                "No markets found with exactly two mapped runners. The resulting file will be empty."
+            )
+            pd.DataFrame(
+                columns=[
+                    "market_id",
+                    "tourney_date",
+                    "p1_id",
+                    "p2_id",
+                    "p1_odds",
+                    "p2_odds",
+                    "winner",
+                ]
+            ).to_csv(output_path, index=False)
+            return
+
         log_info(
             f"Found {len(two_runner_markets)} markets with exactly two fully mapped runners."
         )
@@ -72,9 +126,7 @@ def main():
             inplace=True,
         )
 
-        # --- REFACTOR: Determine winner using the correct column name 'result' ---
         market_data["winner"] = (market_data["result"] == "WINNER").astype(int)
-        # --- END REFACTOR ---
 
         final_cols = [
             "market_id",
@@ -89,7 +141,6 @@ def main():
         final_market_data["p1_id"] = final_market_data["p1_id"].astype("Int64")
         final_market_data["p2_id"] = final_market_data["p2_id"].astype("Int64")
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         final_market_data.to_csv(output_path, index=False)
         log_success(
             f"Successfully built backtest market data with {len(final_market_data)} markets."

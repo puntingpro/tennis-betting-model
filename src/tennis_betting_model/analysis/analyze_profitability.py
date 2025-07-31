@@ -1,7 +1,6 @@
 # src/tennis_betting_model/analysis/analyze_profitability.py
 
 import pandas as pd
-import argparse
 from pathlib import Path
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import setup_logging, log_info, log_error
@@ -14,9 +13,7 @@ def print_report(df: pd.DataFrame, title: str):
         log_info(f"\n{title}\n" + "-" * 50 + "\nNo bets in this category.\n" + "-" * 50)
         return
 
-    # --- REFACTOR: Use the new utility function to ensure PnL is calculated ---
     df_report = calculate_pnl(df.copy())
-    # --- END REFACTOR ---
 
     total_bets = len(df_report)
     total_pnl = df_report["pnl"].sum()
@@ -72,12 +69,5 @@ def main_cli(args):
         print_report(strategy_df, f"Strategy: {name}")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Analyze the profitability of different betting strategies from backtest results."
-    )
-    parser.add_argument(
-        "--config", default="config.yaml", help="Path to the config file."
-    )
-    args = parser.parse_args()
-    main_cli(args)
+# --- REFACTOR: Redundant __main__ block removed. ---
+# This script is now only callable via the main.py entrypoint.

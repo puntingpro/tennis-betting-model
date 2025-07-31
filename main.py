@@ -1,6 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
+import subprocess
 
 sys.path.append(str(Path(__file__).resolve().parent))
 
@@ -30,6 +31,8 @@ from src.tennis_betting_model.analysis.analyze_profitability import (
 from src.tennis_betting_model.analysis.plot_tournament_leaderboard import (
     main_cli as plot_leaderboard,
 )
+
+# --- REFACTOR: Import the new review tool command ---
 from src.tennis_betting_model.pipeline.run_automation import main as run_automation
 
 
@@ -78,6 +81,33 @@ def run_build_pipeline(args):
     log_info("\n--- Data Build Finished ---")
 
 
+def run_dashboard_command(args):
+    """Launches the Streamlit dashboard."""
+    log_info("Launching the PuntingPro Performance Dashboard...")
+    dashboard_path = (
+        Path(__file__).resolve().parent
+        / "src"
+        / "tennis_betting_model"
+        / "dashboard"
+        / "run_dashboard.py"
+    )
+    subprocess.run(["streamlit", "run", str(dashboard_path)], check=True)
+
+
+# --- REFACTOR: Add command to launch the new mapping review tool ---
+def run_review_mappings_command(args):
+    """Launches the Streamlit Player Mapping Review tool."""
+    log_info("Launching the Player Mapping Review Tool...")
+    script_path = (
+        Path(__file__).resolve().parent
+        / "src"
+        / "tennis_betting_model"
+        / "analysis"
+        / "review_player_mappings.py"
+    )
+    subprocess.run(["streamlit", "run", str(script_path)], check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="A comprehensive toolkit for tennis value betting analysis."
@@ -122,12 +152,6 @@ def main():
         "summarize-tournaments", help="Summarize results by tournament category."
     )
     p_summarize.add_argument(
-        "--min-bets",
-        type=int,
-        default=100,
-        help="Minimum bets to include a tournament category.",
-    )
-    p_summarize.add_argument(
         "--show-tournaments",
         action="store_true",
         help="Shows individual tournaments within each category.",
@@ -142,18 +166,33 @@ def main():
     p_plot = analysis_subparsers.add_parser(
         "plot-leaderboard", help="Plot tournament leaderboard by ROI."
     )
+    p_plot.add_argument(
+        "--show-plot",
+        action="store_true",
+        help="If set, displays the leaderboard plot interactively.",
+    )
     p_plot.set_defaults(func=plot_leaderboard)
+
+    # --- REFACTOR: Add the new review-mappings command ---
+    p_review = analysis_subparsers.add_parser(
+        "review-mappings",
+        help="Launch the interactive tool to review and correct player mappings.",
+    )
+    p_review.set_defaults(func=run_review_mappings_command)
+
+    p_dash = subparsers.add_parser(
+        "dashboard", help="Launch the interactive performance dashboard."
+    )
+    p_dash.set_defaults(func=run_dashboard_command)
 
     p_pipeline = subparsers.add_parser(
         "pipeline", help="Run a single pipeline instance."
     )
-    # --- REFACTOR: Add the --dry-run argument to the pipeline command ---
     p_pipeline.add_argument(
         "--dry-run",
         action="store_true",
         help="Run in dry-run mode without placing bets.",
     )
-    # --- END REFACTOR ---
     p_pipeline.set_defaults(func=run_pipeline)
 
     p_automate = subparsers.add_parser(
