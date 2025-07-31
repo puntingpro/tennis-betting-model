@@ -18,21 +18,23 @@ def test_process_markets_identifies_value_bet():
         "p1_rank",
         "p2_rank",
         "rank_diff",
-        "p1_height",
-        "p2_height",
-        "h2h_p1_wins",
-        "h2h_p2_wins",
-        "h2h_win_perc_p1",
+        "p1_elo",
+        "p2_elo",
+        "elo_diff",
         "p1_win_perc",
         "p2_win_perc",
         "p1_surface_win_perc",
         "p2_surface_win_perc",
-        "p1_hand_L",
-        "p1_hand_R",
-        "p1_hand_U",
-        "p2_hand_L",
-        "p2_hand_R",
-        "p2_hand_U",
+        "p1_matches_last_7_days",
+        "p2_matches_last_7_days",
+        "p1_matches_last_14_days",
+        "p2_matches_last_14_days",
+        "fatigue_diff_7_days",
+        "fatigue_diff_14_days",
+        "h2h_p1_wins",
+        "h2h_p2_wins",
+        "p1_hand",
+        "p2_hand",
     ]
 
     mock_market = MagicMock()
@@ -54,15 +56,15 @@ def test_process_markets_identifies_value_bet():
     mock_book.runners = [p1_runner, p2_runner]
 
     mock_player_info_lookup = {
-        101: {"hand": "R", "height": 180.0},
-        102: {"hand": "L", "height": 185.0},
+        101: {"hand": "R"},
+        102: {"hand": "L"},
     }
 
     mock_df_rankings = pd.DataFrame(
         {
-            "ranking_date": pd.to_datetime(["2023-01-01", "2023-01-01"], utc=True),
-            "player": [101, 102],
-            "rank": [10.0, 25.0],
+            "ranking_date": pd.to_datetime(["2023-01-01"], utc=True),
+            "player": [101],
+            "rank": [10.0],
         }
     ).sort_values(by="ranking_date")
 
@@ -70,9 +72,14 @@ def test_process_markets_identifies_value_bet():
         {
             "tourney_date": pd.to_datetime(["2022-01-01"], utc=True),
             "surface": ["Hard"],
-            "winner_id": [101],
-            "loser_id": [102],
+            "winner_historical_id": [101],
+            "loser_historical_id": [102],
         }
+    )
+
+    # --- FIX: Create a mock Elo DataFrame ---
+    mock_df_elo = pd.DataFrame(
+        {"match_id": ["1.2345"], "p1_elo": [1600], "p2_elo": [1500]}
     )
 
     mock_betting_config = {"ev_threshold": 0.1}
@@ -84,6 +91,7 @@ def test_process_markets_identifies_value_bet():
         player_info_lookup=mock_player_info_lookup,
         df_rankings=mock_df_rankings,
         df_matches=mock_df_matches,
+        df_elo=mock_df_elo,  # --- FIX: Pass the mock Elo DataFrame ---
         betting_config=mock_betting_config,
     )
 
@@ -91,5 +99,4 @@ def test_process_markets_identifies_value_bet():
     value_bet = result[0]
     assert value_bet["player_name"] == "Player A"
     assert value_bet["odds"] == 2.0
-    # --- FIX: Changed key from "EV" to "ev" to match dictionary ---
     assert value_bet["ev"] == "+20.00%"
