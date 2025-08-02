@@ -2,7 +2,7 @@
 
 import pandas as pd
 import pytest
-from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 import numpy as np
 import joblib
 import optuna
@@ -51,7 +51,8 @@ def test_train_eval_model_outputs_correct_types(tmp_path, sample_feature_data):
 
     assert model_path.exists()
     model = joblib.load(model_path)
-    assert isinstance(model, XGBClassifier)
+    # FIX: Check for the correct model class after refactoring
+    assert isinstance(model, LGBMClassifier)
 
 
 def test_train_eval_model_logic_is_sound(tmp_path, sample_feature_data):
@@ -71,7 +72,6 @@ def test_train_eval_model_logic_is_sound(tmp_path, sample_feature_data):
 
     model = joblib.load(model_path)
 
-    # --- FIX: Removed the brittle feature importance assertion. ---
     # The model correctly achieves 100% accuracy, proving it learned the pattern.
     # Asserting which specific correlated feature it uses makes the test fragile.
 
