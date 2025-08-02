@@ -31,8 +31,9 @@ from src.tennis_betting_model.analysis.analyze_profitability import (
 from src.tennis_betting_model.analysis.plot_tournament_leaderboard import (
     main_cli as plot_leaderboard,
 )
-
-# --- REFACTOR: Import the new review tool command ---
+from src.tennis_betting_model.analysis.list_tournaments import (
+    main_cli as list_tournaments,
+)
 from src.tennis_betting_model.pipeline.run_automation import main as run_automation
 
 
@@ -94,7 +95,6 @@ def run_dashboard_command(args):
     subprocess.run(["streamlit", "run", str(dashboard_path)], check=True)
 
 
-# --- REFACTOR: Add command to launch the new mapping review tool ---
 def run_review_mappings_command(args):
     """Launches the Streamlit Player Mapping Review tool."""
     log_info("Launching the Player Mapping Review Tool...")
@@ -132,7 +132,9 @@ def main():
     p_build = subparsers.add_parser("build", help="Enrich data and build all features.")
     p_build.set_defaults(func=run_build_pipeline)
 
-    p_model = subparsers.add_parser("model", help="Train and evaluate models.")
+    p_model = subparsers.add_parser(
+        "model", help="Train and evaluate the LightGBM model."
+    )
     p_model.set_defaults(func=train_model)
 
     p_backtest = subparsers.add_parser("backtest", help="Run a historical backtest.")
@@ -173,7 +175,17 @@ def main():
     )
     p_plot.set_defaults(func=plot_leaderboard)
 
-    # --- REFACTOR: Add the new review-mappings command ---
+    p_list = analysis_subparsers.add_parser(
+        "list-tournaments",
+        help="List all unique tournament names found in the data.",
+    )
+    p_list.add_argument(
+        "--year",
+        type=int,
+        help="Optional: Filter tournaments by a specific year.",
+    )
+    p_list.set_defaults(func=list_tournaments)
+
     p_review = analysis_subparsers.add_parser(
         "review-mappings",
         help="Launch the interactive tool to review and correct player mappings.",

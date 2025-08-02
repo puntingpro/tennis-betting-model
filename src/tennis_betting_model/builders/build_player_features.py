@@ -1,6 +1,5 @@
 # src/tennis_betting_model/builders/build_player_features.py
 
-import argparse
 import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
@@ -16,6 +15,7 @@ from tennis_betting_model.utils.logger import (
 from tennis_betting_model.utils.common import get_surface
 from tennis_betting_model.utils.schema import validate_data
 from tennis_betting_model.builders.feature_builder import FeatureBuilder
+from tennis_betting_model.utils.constants import ELO_INITIAL_RATING
 
 
 def _load_data(
@@ -59,7 +59,6 @@ def _load_data(
         df_matches_raw["match_id"] = df_matches_raw["match_id"].astype(str)
         df_elo["match_id"] = df_elo["match_id"].astype(str)
 
-        # --- FIX: Add the 'surface' column to the DataFrame on load ---
         df_matches_raw["surface"] = df_matches_raw["tourney_name"].apply(get_surface)
 
         return df_matches_raw, df_rankings, df_players, df_elo
@@ -112,7 +111,6 @@ def main(args):
         if p1_id == p2_id:
             continue
 
-        # The surface is now directly available from the row
         surface = row.surface
 
         feature_dict = feature_builder.build_features(
@@ -137,6 +135,12 @@ def main(args):
         log_error("No features were generated. The resulting DataFrame is empty.")
         return
 
+    elo_cols = ["p1_elo", "p2_elo", "elo_diff"]
+    for col in elo_cols:
+        final_df[col] = pd.to_numeric(final_df[col], errors="coerce")
+        # --- FIX: Use direct assignment to fill NaN values and avoid FutureWarning ---
+        final_df[col] = final_df[col].fillna(ELO_INITIAL_RATING)
+
     validated_features = validate_data(final_df, "final_features", "Final Feature Set")
 
     output_path = Path(paths["consolidated_features"])
@@ -144,10 +148,3 @@ def main(args):
     log_info(f"Saving FINAL features to {output_path}...")
     validated_features.to_csv(output_path, index=False)
     log_success(f"✅ Successfully created FINAL feature library at {output_path}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="config.yaml", help="Path to config file.")
-    args = parser.parse_args()
-    main(args)

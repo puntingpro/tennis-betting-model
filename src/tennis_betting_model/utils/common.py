@@ -13,7 +13,6 @@ def get_most_recent_ranking(
     Finds the most recent ranking for a player prior to a given date.
     Assumes df_rankings is sorted by ranking_date.
     """
-    # --- FINAL FIX: Defensively make match_date timezone-aware to match df_rankings ---
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
 
@@ -31,12 +30,30 @@ def get_most_recent_ranking(
 def get_surface(tourney_name: str) -> str:
     """Determines the court surface from the tournament name."""
     name = str(tourney_name).lower()
-    clay_keywords = ["clay", "roland garros", "monte carlo", "madrid", "rome"]
-    grass_keywords = ["grass", "wimbledon", "queens club", "halle"]
-    if any(keyword in name for keyword in clay_keywords):
+
+    # --- REFINEMENT: Check for explicit surface hints in the name first ---
+    if "(clay)" in name:
         return "Clay"
+    if "(grass)" in name:
+        return "Grass"
+    if "(hard)" in name:
+        return "Hard"
+
+    # --- REFINEMENT: Use existing keyword list as a fallback ---
+    clay_keywords = ["roland garros", "french open", "monte carlo", "madrid", "rome"]
+    grass_keywords = [
+        "wimbledon",
+        "queens club",
+        "halle",
+        "'s-hertogenbosch",
+        "newport",
+    ]
+
     if any(keyword in name for keyword in grass_keywords):
         return "Grass"
+    if any(keyword in name for keyword in clay_keywords):
+        return "Clay"
+
     return "Hard"
 
 
@@ -47,6 +64,8 @@ def get_tournament_category(tourney_name: str) -> str:
     tourney_name = str(tourney_name).lower()
 
     category_map = {
+        # --- REFINEMENT: Add UTR category ---
+        "utr": "UTR / Pro Series",
         "grand slam": "Grand Slam",
         "australian open": "Grand Slam",
         "roland garros": "Grand Slam",

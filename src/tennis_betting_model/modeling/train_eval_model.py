@@ -1,5 +1,8 @@
+# NOTE: LightGBM was selected as the champion model after comparative backtesting
+# against XGBoost. All modeling and training now defaults to LightGBM.
+
 import pandas as pd
-import xgboost as xgb
+import lightgbm as lgb
 from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 import joblib
 from pathlib import Path
@@ -8,32 +11,29 @@ from typing import cast
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import log_info, log_error
 
-
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
-def objective(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float:
+def objective_lgbm(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float:
     params = {
-        "objective": "binary:logistic",
-        "eval_metric": "logloss",
-        "use_label_encoder": False,
+        "objective": "binary",
+        "metric": "auc",
+        "verbosity": -1,
+        "boosting_type": "gbdt",
         "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-        "max_depth": trial.suggest_int("max_depth", 3, 10),
         "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
+        "num_leaves": trial.suggest_int("num_leaves", 20, 300),
+        "max_depth": trial.suggest_int("max_depth", 3, 12),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
-        "gamma": trial.suggest_float("gamma", 0, 5),
     }
-
-    model = xgb.XGBClassifier(**params, random_state=42, early_stopping_rounds=50)
-
+    model = lgb.LGBMClassifier(**params, random_state=42)
     model.fit(
         X_train,
         y_train,
         eval_set=[(X_val, y_val)],
-        verbose=False,
+        callbacks=[lgb.early_stopping(50, verbose=False)],
     )
-
     y_pred_proba = model.predict_proba(X_val)[:, 1]
     auc = roc_auc_score(y_val, y_pred_proba)
     return cast(float, auc)
@@ -46,7 +46,7 @@ def train_eval_model(
     test_size: float = 0.2,
     random_state: int = 42,
 ):
-    print("--- Starting Model Training and Hyperparameter Optimization ---")
+    print("--- Starting Model Training for LightGBM ---")
 
     if data.empty:
         log_error("Feature DataFrame is empty. No data available to train the model.")
@@ -107,8 +107,9 @@ def train_eval_model(
 
     study = optuna.create_study(direction="maximize")
     print(f"Running Optuna optimization for {n_trials} trials...")
+
     study.optimize(
-        lambda trial: objective(trial, X_train, y_train, X_val, y_val),
+        lambda trial: objective_lgbm(trial, X_train, y_train, X_val, y_val),
         n_trials=n_trials,
         show_progress_bar=True,
     )
@@ -123,9 +124,7 @@ def train_eval_model(
         "\nTraining final model with best hyperparameters on the full training set..."
     )
     best_params = study.best_params
-    final_model = xgb.XGBClassifier(
-        **best_params, use_label_encoder=False, eval_metric="logloss", random_state=42
-    )
+    final_model = lgb.LGBMClassifier(**best_params, random_state=42)
     final_model.fit(X_train_main, y_train_main)
 
     print("Evaluating final model on the hold-out test set...")
@@ -140,7 +139,7 @@ def train_eval_model(
     model_path = Path(model_output_path)
     model_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(final_model, model_path)
-    print(f"\n✅ Final optimized model saved to {model_path}")
+    print(f"\n✅ Final optimized LGBM model saved to {model_path}")
 
 
 def main_cli(args):
@@ -174,7 +173,3 @@ def main_cli(args):
 
     except FileNotFoundError as e:
         print(f"Error: {e}")
-
-
-# --- REFACTOR: Redundant __main__ block removed. ---
-# This script is now only callable via the main.py entrypoint.

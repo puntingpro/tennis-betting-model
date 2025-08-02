@@ -14,6 +14,7 @@ from tennis_betting_model.utils.logger import (
     log_error,
     log_warning,
 )
+from tennis_betting_model.utils.schema import validate_data
 
 
 def get_initial_lastname(name):
@@ -292,3 +293,6 @@ def create_mapping_file(config: dict):
     log_warning(
         "IMPORTANT: Please manually review this file. It should now be highly accurate."
     )
+
+    # Validate the final dataframe
+    validate_data(final_mappings, "player_map", "Final Player Map")

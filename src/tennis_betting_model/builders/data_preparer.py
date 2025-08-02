@@ -9,6 +9,7 @@ from tennis_betting_model.utils.logger import (
     log_success,
     log_error,
 )
+from tennis_betting_model.utils.schema import validate_data
 
 
 def consolidate_player_attributes(config: dict):
@@ -55,6 +56,9 @@ def consolidate_player_attributes(config: dict):
     combined_df.to_csv(output_path, index=False)
     log_success(f"Consolidated {len(combined_df)} players into {output_path}")
 
+    # Validate the final dataframe
+    validate_data(combined_df, "raw_players", "Consolidated Player Attributes")
+
 
 def consolidate_rankings(config: dict):
     paths = config["data_paths"]
@@ -95,3 +99,6 @@ def consolidate_rankings(config: dict):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_csv(output_path, index=False)
     log_success(f"Consolidated {len(combined_df)} ranking records into {output_path}")
+
+    # Validate the final dataframe
+    validate_data(combined_df, "consolidated_rankings", "Consolidated Rankings")

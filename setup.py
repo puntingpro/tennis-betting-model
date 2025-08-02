@@ -4,6 +4,9 @@ from setuptools import setup, find_packages
 with open("requirements.txt") as f:
     required = f.read().splitlines()
 
+# Add any new dependencies here
+required.append("lightgbm")
+
 setup(
     name="tennis_betting_model",
     version="1.0.0",
