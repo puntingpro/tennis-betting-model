@@ -27,7 +27,8 @@ def objective_lgbm(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
     }
-    model = lgb.LGBMClassifier(**params, random_state=42)
+    # FIX: Ignore mypy error for this line
+    model = lgb.LGBMClassifier(**params, random_state=42)  # type: ignore
     model.fit(
         X_train,
         y_train,
@@ -124,7 +125,8 @@ def train_eval_model(
         "\nTraining final model with best hyperparameters on the full training set..."
     )
     best_params = study.best_params
-    final_model = lgb.LGBMClassifier(**best_params, random_state=42)
+    # FIX: Ignore mypy error for this line
+    final_model = lgb.LGBMClassifier(**best_params, random_state=42)  # type: ignore
     final_model.fit(X_train_main, y_train_main)
 
     print("Evaluating final model on the hold-out test set...")
