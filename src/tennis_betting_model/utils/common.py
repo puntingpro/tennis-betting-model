@@ -16,13 +16,23 @@ def get_most_recent_ranking(
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
 
-    player_rankings = df_rankings[
-        (df_rankings["player"] == player_id)
-        & (df_rankings["ranking_date"] < match_date)
-    ]
+    # Group rankings by player for efficient lookup
+    if not hasattr(get_most_recent_ranking, "player_rankings_map"):
+        get_most_recent_ranking.player_rankings_map = dict(  # type: ignore
+            tuple(df_rankings.groupby("player"))
+        )
 
-    if not player_rankings.empty:
-        return cast(int, player_rankings["rank"].iloc[-1])
+    player_rankings = get_most_recent_ranking.player_rankings_map.get(player_id)  # type: ignore
+
+    if player_rankings is None or player_rankings.empty:
+        return DEFAULT_PLAYER_RANK
+
+    # Use searchsorted for efficient lookup on the sorted dates
+    dates = player_rankings["ranking_date"]
+    index = dates.searchsorted(match_date, side="right") - 1
+
+    if index >= 0:
+        return cast(int, player_rankings["rank"].iloc[index])
 
     return DEFAULT_PLAYER_RANK
 
@@ -31,7 +41,6 @@ def get_surface(tourney_name: str) -> str:
     """Determines the court surface from the tournament name."""
     name = str(tourney_name).lower()
 
-    # --- REFINEMENT: Check for explicit surface hints in the name first ---
     if "(clay)" in name:
         return "Clay"
     if "(grass)" in name:
@@ -39,7 +48,6 @@ def get_surface(tourney_name: str) -> str:
     if "(hard)" in name:
         return "Hard"
 
-    # --- REFINEMENT: Use existing keyword list as a fallback ---
     clay_keywords = ["roland garros", "french open", "monte carlo", "madrid", "rome"]
     grass_keywords = [
         "wimbledon",
@@ -64,7 +72,6 @@ def get_tournament_category(tourney_name: str) -> str:
     tourney_name = str(tourney_name).lower()
 
     category_map = {
-        # --- REFINEMENT: Add UTR category ---
         "utr": "UTR / Pro Series",
         "grand slam": "Grand Slam",
         "australian open": "Grand Slam",

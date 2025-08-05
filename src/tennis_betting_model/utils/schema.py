@@ -1,5 +1,5 @@
 import pandas as pd
-import pandera.pandas as pa  # FIX: Updated import to resolve FutureWarning
+import pandera.pandas as pa
 from pandera.typing import Series
 from typing import cast, Optional
 from .logger import log_info, log_error, log_success
@@ -30,7 +30,7 @@ class FinalFeaturesSchema(pa.DataFrameModel):
     """
 
     # Match context
-    match_id: Series[str] = pa.Field(nullable=False)
+    market_id: Series[str] = pa.Field(nullable=False)
     tourney_date: Series[pa.DateTime] = pa.Field(nullable=False, coerce=True)
     tourney_name: Series[str] = pa.Field(nullable=True)
     surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass"])
@@ -52,6 +52,11 @@ class FinalFeaturesSchema(pa.DataFrameModel):
     p2_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
     p1_surface_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
     p2_surface_win_perc: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+
+    # FIX: Add form features to the schema
+    p1_form: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    p2_form: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+
     p1_matches_last_7_days: Series[int] = pa.Field(ge=0, coerce=True)
     p2_matches_last_7_days: Series[int] = pa.Field(ge=0, coerce=True)
     p1_matches_last_14_days: Series[int] = pa.Field(ge=0, coerce=True)
