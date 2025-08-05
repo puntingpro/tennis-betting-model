@@ -20,7 +20,6 @@ from src.tennis_betting_model.builders.build_backtest_data import (
     main as build_backtest_data,
 )
 from src.tennis_betting_model.modeling.train_eval_model import main_cli as train_model
-from src.tennis_betting_model.pipeline.run_pipeline import main_cli as run_pipeline
 from src.tennis_betting_model.analysis.run_backtest import main as run_backtest
 from src.tennis_betting_model.analysis.summarize_value_bets_by_tournament import (
     main_cli as summarize_tournaments,
@@ -34,57 +33,56 @@ from src.tennis_betting_model.analysis.plot_tournament_leaderboard import (
 from src.tennis_betting_model.analysis.list_tournaments import (
     main_cli as list_tournaments,
 )
-from src.tennis_betting_model.pipeline.run_automation import main as run_automation
+from src.tennis_betting_model.pipeline.run_flumine import main as run_stream
 
 
 from src.tennis_betting_model.utils.logger import (
     setup_logging,
     log_info,
+    log_success,
 )
 from src.tennis_betting_model.utils.config import load_config
 
 
 def run_data_preparation_pipeline(args):
-    """
-    Prepares only the most raw, independent data sources.
-    """
+    """Orchestrates the initial data consolidation steps."""
     log_info("--- Running Data Preparation Pipeline ---")
     config = load_config(args.config)
     log_info("\nStep 1: Consolidating player attributes...")
     consolidate_player_attributes(config)
     log_info("\nStep 2: Consolidating player rankings...")
     consolidate_rankings(config)
-    log_info("\nStep 3: Building RAW odds from Betfair files...")
+    log_info("\nStep 3: Building RAW odds from Betfair summary files...")
     build_raw_odds()
-    log_info("\n--- Data Preparation Finished ---")
+    log_success("\n--- Data Preparation Finished ---")
 
 
 def run_player_map_pipeline(args):
+    """Runs the standalone player mapping generation."""
     log_info("--- Running Player Mapping ---")
     config = load_config(args.config)
     create_mapping_file(config)
+    log_success("\n--- Player Mapping Finished ---")
 
 
 def run_build_pipeline(args):
-    """
-    Enriches data and builds all features.
-    """
-    log_info("--- Running Full Data Build ---")
+    """Orchestrates all data enrichment and feature engineering steps."""
+    log_info("--- Running Full Data Build Pipeline ---")
     config = load_config(args.config)
-    log_info("\nStep 1: Enriching data and creating match log...")
+    log_info("\nStep 1: Creating historical match log from Betfair data...")
     build_match_log(config)
-    log_info("\nStep 2: Calculating Elo ratings...")
+    log_info("\nStep 2: Calculating surface-specific Elo ratings...")
     build_elo()
-    log_info("\nStep 3: Building player features...")
+    log_info("\nStep 3: Building consolidated player features...")
     build_features(args)
-    log_info("\nStep 4: Building clean data for realistic backtest...")
+    log_info("\nStep 4: Building clean market data for realistic backtesting...")
     build_backtest_data()
-    log_info("\n--- Data Build Finished ---")
+    log_success("\n--- Data Build Finished ---")
 
 
 def run_dashboard_command(args):
-    """Launches the Streamlit dashboard."""
-    log_info("Launching the PuntingPro Performance Dashboard...")
+    """Launches the Streamlit performance dashboard."""
+    log_info("Launching the Performance Dashboard...")
     dashboard_path = (
         Path(__file__).resolve().parent
         / "src"
@@ -119,6 +117,16 @@ def main():
         dest="command", required=True, help="Available commands"
     )
 
+    p_stream = subparsers.add_parser(
+        "stream", help="Run the live, real-time trading bot using the Stream API."
+    )
+    p_stream.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run in dry-run mode to see potential bets without placing real money.",
+    )
+    p_stream.set_defaults(func=run_stream)
+
     p_prepare = subparsers.add_parser(
         "prepare-data", help="Prepare raw data sources (players, rankings, raw odds)."
     )
@@ -152,11 +160,6 @@ def main():
 
     p_summarize = analysis_subparsers.add_parser(
         "summarize-tournaments", help="Summarize results by tournament category."
-    )
-    p_summarize.add_argument(
-        "--show-tournaments",
-        action="store_true",
-        help="Shows individual tournaments within each category.",
     )
     p_summarize.set_defaults(func=summarize_tournaments)
 
@@ -196,21 +199,6 @@ def main():
         "dashboard", help="Launch the interactive performance dashboard."
     )
     p_dash.set_defaults(func=run_dashboard_command)
-
-    p_pipeline = subparsers.add_parser(
-        "pipeline", help="Run a single pipeline instance."
-    )
-    p_pipeline.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Run in dry-run mode without placing bets.",
-    )
-    p_pipeline.set_defaults(func=run_pipeline)
-
-    p_automate = subparsers.add_parser(
-        "automate", help="Run the pipeline on a schedule."
-    )
-    p_automate.set_defaults(func=run_automation)
 
     args = parser.parse_args()
     setup_logging()

@@ -1,0 +1,59 @@
+# /.github/workflows/build_and_backtest.yml
+name: PuntingPro Build and Backtest
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Runs every Sunday at midnight
+  workflow_dispatch:
+jobs:
+  build-and-backtest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+      - name: Download Raw Data from GCS
+        run: |
+          mkdir -p ./data/raw/tennis_atp ./data/raw/tennis_wta
+          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/tennis_atp ./data/raw/tennis_atp
+          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/tennis_wta ./data/raw/tennis_wta
+          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/betfair_summary_files ./data/raw/
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Run Full Data and Model Pipeline
+        run: |
+          echo "--- Preparing raw data ---"
+          python main.py prepare-data
+          echo "--- Building player map ---"
+          python main.py create-player-map
+          echo "--- Building features and backtest data ---"
+          python main.py build
+          echo "--- Training new model ---"
+          python main.py model
+          echo "--- Running realistic backtest ---"
+          python main.py backtest realistic
+          echo "--- Generating analysis reports ---"
+          python main.py analysis summarize-tournaments
+          python main.py analysis plot-leaderboard
+      - name: Upload Processed Data and Models to GCS
+        run: |
+          echo "Uploading all generated data, models, and plots to Google Cloud Storage..."
+          gcloud storage rsync -r ./data/processed gs://puntingpro-data-lucap/processed
+          gcloud storage rsync -r ./models gs://puntingpro-data-lucap/models
+          gcloud storage rsync -r ./data/plots gs://puntingpro-data-lucap/plots
+          gcloud storage rsync -r ./data/analysis gs://puntingpro-data-lucap/analysis/latest/
+        continue-on-error: true

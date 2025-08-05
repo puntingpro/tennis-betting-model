@@ -74,7 +74,7 @@ def main(config: dict):
     )
 
     if match_log_df.empty:
-        log_warning("⚠️ No valid, settled matches were found in the summary data.")
+        log_warning("Γ£ûΓîÅ No valid, settled matches were found in the summary data.")
         return
 
     match_log_df.sort_values(by="tourney_date", inplace=True)

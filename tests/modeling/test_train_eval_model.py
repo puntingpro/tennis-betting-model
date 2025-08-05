@@ -43,15 +43,16 @@ def test_train_eval_model_outputs_correct_types(tmp_path, sample_feature_data):
     """
     model_path = tmp_path / "test_model.joblib"
 
+    # FIX: Add the required 'plot_dir' argument
     train_eval_model(
         data=sample_feature_data,
         model_output_path=str(model_path),
+        plot_dir=str(tmp_path),
         n_trials=2,
     )
 
     assert model_path.exists()
     model = joblib.load(model_path)
-    # FIX: Check for the correct model class after refactoring
     assert isinstance(model, LGBMClassifier)
 
 
@@ -63,19 +64,17 @@ def test_train_eval_model_logic_is_sound(tmp_path, sample_feature_data):
 
     optuna.logging.set_verbosity(optuna.logging.CRITICAL)
 
+    # FIX: Add the required 'plot_dir' argument
     train_eval_model(
         data=sample_feature_data,
         model_output_path=str(model_path),
+        plot_dir=str(tmp_path),
         n_trials=5,
         test_size=0.5,
     )
 
     model = joblib.load(model_path)
 
-    # The model correctly achieves 100% accuracy, proving it learned the pattern.
-    # Asserting which specific correlated feature it uses makes the test fragile.
-
-    # Check that the feature names in the model match the input columns
     expected_features = set(
         ["p1_rank", "p2_rank", "rank_diff", "p1_hand_R", "p2_hand_R"]
     )

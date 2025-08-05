@@ -1,5 +1,5 @@
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa  # FIX: Updated import to resolve FutureWarning
 from pandera.typing import Series
 from typing import cast, Optional
 from .logger import log_info, log_error, log_success
@@ -44,7 +44,6 @@ class FinalFeaturesSchema(pa.DataFrameModel):
     p2_rank: Series[float] = pa.Field(nullable=False, coerce=True)
     rank_diff: Series[float] = pa.Field(nullable=False, coerce=True)
 
-    # --- FIX: Allow Elo columns to be nullable during validation ---
     p1_elo: Series[float] = pa.Field(nullable=True, coerce=True)
     p2_elo: Series[float] = pa.Field(nullable=True, coerce=True)
     elo_diff: Series[float] = pa.Field(nullable=True, coerce=True)

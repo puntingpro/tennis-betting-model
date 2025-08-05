@@ -63,7 +63,8 @@ def run_backtest(
     )[:, 1]
     bets_df["p2_predicted_prob"] = 1 - bets_df["p1_predicted_prob"]
 
-    base_cols = ["market_id", "tourney_name", "tourney_date", "winner"]
+    # --- ENHANCEMENT: Add surface to output for better analysis ---
+    base_cols = ["market_id", "tourney_name", "tourney_date", "surface", "winner"]
 
     bets_p1 = bets_df[base_cols].copy()
     bets_p1["odds"] = bets_df["p1_odds"]

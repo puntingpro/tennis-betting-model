@@ -92,7 +92,6 @@ venv.bak
 *.key
 *.crt
 certs/
-config.yaml
 
 # PuntingPro Specific
 /data/

@@ -33,8 +33,8 @@ def test_process_markets_identifies_value_bet():
         "fatigue_diff_14_days",
         "h2h_p1_wins",
         "h2h_p2_wins",
-        "p1_hand",
-        "p2_hand",
+        "p1_hand_R",
+        "p2_hand_R",
     ]
 
     mock_market = MagicMock()
@@ -50,9 +50,13 @@ def test_process_markets_identifies_value_bet():
 
     mock_book = MagicMock()
     p1_runner = MagicMock()
-    p1_runner.ex.available_to_back = [MagicMock(price=2.0)]
+    p1_runner.selection_id = 101
+    # FIX: Use a list of dicts to correctly mock the price data structure
+    p1_runner.ex.available_to_back = [{"price": 2.0, "size": 100}]
     p2_runner = MagicMock()
-    p2_runner.ex.available_to_back = [MagicMock(price=1.8)]
+    p2_runner.selection_id = 102
+    # FIX: Use a list of dicts to correctly mock the price data structure
+    p2_runner.ex.available_to_back = [{"price": 1.8, "size": 100}]
     mock_book.runners = [p1_runner, p2_runner]
 
     mock_player_info_lookup = {
@@ -77,7 +81,6 @@ def test_process_markets_identifies_value_bet():
         }
     )
 
-    # --- FIX: Create a mock Elo DataFrame ---
     mock_df_elo = pd.DataFrame(
         {"match_id": ["1.2345"], "p1_elo": [1600], "p2_elo": [1500]}
     )
@@ -91,7 +94,7 @@ def test_process_markets_identifies_value_bet():
         player_info_lookup=mock_player_info_lookup,
         df_rankings=mock_df_rankings,
         df_matches=mock_df_matches,
-        df_elo=mock_df_elo,  # --- FIX: Pass the mock Elo DataFrame ---
+        df_elo=mock_df_elo,
         betting_config=mock_betting_config,
     )
 

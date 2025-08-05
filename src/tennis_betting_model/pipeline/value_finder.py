@@ -1,9 +1,13 @@
+# FILE: src/tennis_betting_model/pipeline/value_finder.py
+
 import pandas as pd
 from decimal import Decimal
 from typing import cast, Dict, Any
-from tennis_betting_model.utils.logger import log_info, log_success, log_warning
-from tennis_betting_model.builders.feature_builder import FeatureBuilder
-from tennis_betting_model.utils.alerter import alert_value_bets_found
+
+# Note: Using relative imports as standard for the project structure
+from ..utils.logger import log_info, log_warning
+from ..builders.feature_builder import FeatureBuilder
+from ..utils.alerter import alert_value_bets_found
 
 
 class MarketProcessor:
@@ -15,37 +19,59 @@ class MarketProcessor:
     def __init__(self, model, feature_builder: FeatureBuilder, betting_config: dict):
         self.model = model
         self.feature_builder = feature_builder
+        # Use Decimal for precise financial calculations
         self.ev_threshold = Decimal(str(betting_config.get("ev_threshold", 0.1)))
 
     def process_market(self, market_catalogue, market_book) -> list:
         """
         Analyzes a single market and returns any identified value bets.
         """
+        # Basic validation: ensure we have the book and exactly 2 runners
         if (
             not market_book
+            or not hasattr(market_catalogue, "runners")
+            or not hasattr(market_book, "runners")
             or len(market_catalogue.runners) != 2
             or len(market_book.runners) != 2
         ):
             return []
 
         try:
+            # Extract metadata
             p1_meta, p2_meta = market_catalogue.runners
-            p1_book, p2_book = market_book.runners
 
+            # Ensure book runners align with catalogue runners (more robust than assuming order)
+            book_runners_dict = {r.selection_id: r for r in market_book.runners}
+            p1_book = book_runners_dict.get(p1_meta.selection_id)
+            p2_book = book_runners_dict.get(p2_meta.selection_id)
+
+            if not p1_book or not p2_book:
+                # Handle case where runner data might be missing in the book update
+                return []
+
+            # Build features
             features = self._build_live_features(market_catalogue)
             if features is None:
                 return []
 
-            features_df = pd.DataFrame(
-                [features], columns=self.model.feature_names_in_
-            ).fillna(0)
+            # Prepare features for the model
+            features_df = pd.DataFrame([features])
 
-            win_prob_p1 = Decimal(str(self.model.predict_proba(features_df)[0][1]))
+            # Ensure the DataFrame columns exactly match the model's expected features, filling missing with 0.
+            features_df = features_df.reindex(
+                columns=self.model.feature_names_in_, fill_value=0
+            )
+
+            # Predict probabilities
+            prediction = self.model.predict_proba(features_df)[0]
+            win_prob_p1 = Decimal(str(prediction[1]))
             win_prob_p2 = Decimal("1.0") - win_prob_p1
 
             value_bets = []
+
+            # Check Player 1 for value
             if p1_book.ex.available_to_back:
-                p1_odds = Decimal(str(p1_book.ex.available_to_back[0].price))
+                p1_odds = Decimal(str(p1_book.ex.available_to_back[0]["price"]))
                 p1_ev = (win_prob_p1 * p1_odds) - Decimal("1.0")
                 if p1_ev > self.ev_threshold:
                     kelly_denominator = p1_odds - Decimal("1.0")
@@ -65,8 +91,9 @@ class MarketProcessor:
                         )
                     )
 
+            # Check Player 2 for value
             if p2_book.ex.available_to_back:
-                p2_odds = Decimal(str(p2_book.ex.available_to_back[0].price))
+                p2_odds = Decimal(str(p2_book.ex.available_to_back[0]["price"]))
                 p2_ev = (win_prob_p2 * p2_odds) - Decimal("1.0")
                 if p2_ev > self.ev_threshold:
                     kelly_denominator = p2_odds - Decimal("1.0")
@@ -89,31 +116,33 @@ class MarketProcessor:
             return value_bets
 
         except Exception as e:
+            # Catch exceptions during processing of a single market to prevent crashing the whole stream
+            market_id = getattr(market_catalogue, "market_id", "UnknownID")
             log_warning(
-                f"Skipping market {market_catalogue.market_id} due to processing error: {e}"
+                f"Γ£ûΓîÅ Skipping market {market_id} due to processing error: {e}"
             )
             return []
 
     def _build_live_features(self, market_catalogue) -> dict | None:
         """Builds features for a live market."""
         p1_meta, p2_meta = market_catalogue.runners
-        p1_id, p2_id = int(p1_meta.selection_id), int(p2_meta.selection_id)
 
+        try:
+            p1_id, p2_id = int(p1_meta.selection_id), int(p2_meta.selection_id)
+        except (ValueError, TypeError):
+            return None
+
+        # Determine surface from market name
         surface = "Hard"
-        if market_catalogue.market_name:
+        if hasattr(market_catalogue, "market_name") and market_catalogue.market_name:
             name_lower = market_catalogue.market_name.lower()
             if "clay" in name_lower:
                 surface = "Clay"
             elif "grass" in name_lower:
                 surface = "Grass"
 
-        match_date = pd.to_datetime(market_catalogue.market_start_time).tz_convert(
-            "UTC"
-        )
+        match_date = pd.to_datetime(market_catalogue.market_start_time, utc=True)
 
-        # --- FIX: Pass match_id to build_features ---
-        # Live markets don't have a historical match_id, so we use the market_id
-        # The FeatureBuilder will handle cases where this ID isn't in the Elo table
         features = self.feature_builder.build_features(
             p1_id, p2_id, surface, match_date, match_id=market_catalogue.market_id
         )
@@ -121,19 +150,27 @@ class MarketProcessor:
 
     def _create_bet_info(self, market, runner_meta, odds, prob, ev, kelly) -> dict:
         """Creates a formatted dictionary for an identified value bet."""
+
+        comp_name = (
+            getattr(market.competition, "name", "N/A")
+            if hasattr(market, "competition")
+            else "N/A"
+        )
+        event_name = (
+            getattr(market.event, "name", "N/A") if hasattr(market, "event") else "N/A"
+        )
+
         bet_info = {
             "market_id": market.market_id,
             "selection_id": runner_meta.selection_id,
-            "match": f"{market.competition.name} - {market.event.name}",
+            "match": f"{comp_name} - {event_name}",
             "player_name": runner_meta.runner_name,
             "odds": float(odds),
             "model_prob": f"{prob:.2%}",
             "ev": f"{ev:+.2%}",
             "kelly_fraction": float(kelly) if kelly > 0 else 0.0,
         }
-        log_success(
-            f"VALUE BET FOUND: {bet_info['player_name']} @ {bet_info['odds']} (EV: {bet_info['ev']})"
-        )
+        # Logging is now handled by the strategy to prevent duplicates
         return bet_info
 
 
@@ -144,15 +181,15 @@ def process_markets(
     player_info_lookup,
     df_rankings,
     df_matches,
-    df_elo,  # --- FIX: Accept the new df_elo DataFrame ---
+    df_elo,
     betting_config,
 ):
     """
+    (LEGACY: Used by the polling pipeline 'run_pipeline.py')
     Builds features for live markets, makes predictions, and identifies value bets.
     """
     log_info(f"Processing {len(market_catalogues)} live markets...")
 
-    # --- FIX: Pass df_elo to the FeatureBuilder ---
     feature_builder = FeatureBuilder(
         player_info_lookup, df_rankings, df_matches, df_elo
     )
@@ -161,9 +198,10 @@ def process_markets(
     all_value_bets = []
     for market in market_catalogues:
         market_book = market_book_lookup.get(market.market_id)
-        value_bets_for_market = market_processor.process_market(market, market_book)
-        if value_bets_for_market:
-            all_value_bets.extend(value_bets_for_market)
+        if market_book:
+            value_bets_for_market = market_processor.process_market(market, market_book)
+            if value_bets_for_market:
+                all_value_bets.extend(value_bets_for_market)
 
     if all_value_bets:
         bet_df = pd.DataFrame(all_value_bets)

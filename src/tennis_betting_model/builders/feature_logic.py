@@ -9,6 +9,7 @@ def get_h2h_stats(
     """
     Calculates point-in-time Head-to-Head (H2H) stats for two players.
     """
+    # Ensure match_date is timezone-aware for safe comparison
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
 
@@ -38,6 +39,7 @@ def get_player_stats(
     """
     Calculates point-in-time win percentages, recent form, and fatigue for a single player.
     """
+    # Ensure match_date is timezone-aware for safe comparison
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
 
@@ -71,8 +73,8 @@ def get_player_stats(
 
     recent_match_dates = player_matches["tourney_date"]
 
-    # --- FIX: Add 'type: ignore' to resolve mypy error for this specific operation ---
-    time_since_matches = match_date - recent_match_dates  # type: ignore[operator]
+    # Calculate time differences safely
+    time_since_matches = match_date - recent_match_dates  # type: ignore
     matches_last_14_days = (time_since_matches.dt.days <= 14).sum()
     matches_last_7_days = (time_since_matches.dt.days <= 7).sum()
 

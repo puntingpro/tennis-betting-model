@@ -1,0 +1,89 @@
+# /tennis-betting-model/config.yaml
+
+# -----------------------------------------------------------------------------
+# Data Paths
+# -----------------------------------------------------------------------------
+data_paths:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  plot_dir: "data/analysis/plots"
+  raw_players: "data/processed/players.csv"
+  consolidated_rankings: "data/processed/rankings.csv"
+  betfair_raw_odds: "data/processed/betfair_raw_odds.csv"
+  player_map: "data/processed/player_mapping.csv"
+  betfair_match_log: "data/processed/betfair_match_log.csv"
+  elo_ratings: "data/processed/elo_ratings.csv"
+  consolidated_features: "data/processed/consolidated_features.csv"
+  backtest_market_data: "data/processed/backtest_market_data.csv"
+  model: "models/puntingpro_lgbm_v1.joblib"
+  backtest_results: "data/analysis/backtest_results.csv"
+  tournament_summary: "data/analysis/tournament_summary.csv"
+  processed_bets_log: "data/processed/processed_bets_log.json"
+
+# -----------------------------------------------------------------------------
+# Feature Engineering Parameters
+# -----------------------------------------------------------------------------
+elo_config:
+  k_factor: 32
+  rating_diff_factor: 400
+
+mapping_params:
+  confidence_threshold: 85
+
+# -----------------------------------------------------------------------------
+# Model Training Parameters
+# -----------------------------------------------------------------------------
+training_params:
+  hyperparameter_trials: 50
+  max_training_samples: 100000
+
+# -----------------------------------------------------------------------------
+# Live Trading Parameters (NEW SECTION)
+# -----------------------------------------------------------------------------
+### IMPROVEMENT: New section to control the live trading bot's behavior.
+live_trading_params:
+  poll_hours_ahead: 12      # How many hours into the future to look for markets.
+  order_timeout_seconds: 120  # Cancel unmatched bets after this many seconds.
+
+# -----------------------------------------------------------------------------
+# Betting & Live Pipeline Configuration
+# -----------------------------------------------------------------------------
+betting:
+  ev_threshold: 0.10
+  confidence_threshold: 0.52
+  betfair_commission: 0.05
+  live_bankroll: 1000.0
+  live_kelly_fraction: 0.10
+  max_kelly_stake_fraction: 0.05
+  ### IMPROVEMENT: Using exact category names from the get_tournament_category utility
+  # This list now correctly controls which tournament types the live bot will trade on.
+  profitable_tournaments:
+    - "Grand Slam"
+    - "Masters 1000"
+    - "ATP / WTA Tour"
+    - "Challenger"
+    - "ITF / Futures"
+
+# -----------------------------------------------------------------------------
+# Backtest Analysis Parameters
+# -----------------------------------------------------------------------------
+analysis_strategies:
+  - name: "High Confidence (Odds < 3.0)"
+    min_odds: 1.01
+    max_odds: 3.0
+    min_ev: 0.15
+  - name: "Value Outsiders (Odds 3.0 - 6.0)"
+    min_odds: 3.0
+    max_odds: 6.0
+    min_ev: 0.20
+
+analysis_params:
+  min_bets_for_summary: 100
+  leaderboard_top_n: 25
+
+# -----------------------------------------------------------------------------
+# Bankroll Simulation Parameters
+# -----------------------------------------------------------------------------
+simulation_params:
+  max_kelly_stake_fraction: 0.1
+  max_profit_per_bet: 10000.0

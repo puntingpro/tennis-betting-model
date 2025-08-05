@@ -6,31 +6,49 @@ import datetime
 
 from tennis_betting_model.utils.logger import setup_logging, log_error
 from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.pipeline.simulate_bankroll_growth import (
+    simulate_bankroll_growth,
+    calculate_max_drawdown,
+)
 
 
+@st.cache_data
 def load_backtest_data(paths: dict) -> pd.DataFrame:
     """Loads and prepares the backtest results data."""
     try:
         results_path = Path(paths["backtest_results"])
         df = pd.read_csv(results_path)
         df["tourney_date"] = pd.to_datetime(df["tourney_date"])
-        # Ensure 'pnl' column exists from the backtest script
+
         if "pnl" not in df.columns:
             df["pnl"] = df.apply(
                 lambda row: (row["odds"] - 1) * 0.95 if row["winner"] == 1 else -1,
                 axis=1,
             )
+
+        features_path = Path(paths["consolidated_features"])
+        if features_path.exists():
+            df_features = pd.read_csv(features_path, usecols=["market_id", "rank_diff"])
+            df["market_id"] = df["market_id"].astype(str)
+            df_features["market_id"] = df_features["market_id"].astype(str)
+            df = pd.merge(df, df_features, on="market_id", how="left")
+        else:
+            df["rank_diff"] = 0
+
         return df.sort_values("tourney_date")
     except FileNotFoundError:
         log_error(
             f"Backtest results not found at {paths['backtest_results']}. Please run a backtest first."
         )
         return pd.DataFrame()
+    except Exception as e:
+        st.error(f"An error occurred loading backtest data: {e}")
+        return pd.DataFrame()
 
 
 def run() -> None:
     """Main function to run the enhanced Streamlit dashboard."""
-    st.set_page_config(layout="wide", page_title="PuntingPro Performance Dashboard")
+    st.set_page_config(layout="wide", page_title="Performance Dashboard")
     setup_logging()
 
     st.title("🎾 PuntingPro Performance Dashboard")
@@ -51,7 +69,7 @@ def run() -> None:
         return
 
     # --- Sidebar Filters ---
-    st.sidebar.header("Strategy Filters")
+    st.sidebar.header("Master Strategy Filters")
 
     min_date = df_full["tourney_date"].min().date()
     max_date = df_full["tourney_date"].max().date()
@@ -72,15 +90,15 @@ def run() -> None:
         "Expected Value (EV) Range",
         min_value=float(df_full["expected_value"].min()),
         max_value=float(df_full["expected_value"].max()),
-        value=(0.1, float(df_full["expected_value"].max())),
+        value=(0.0, float(df_full["expected_value"].max())),
         step=0.01,
     )
 
+    # --- Filter Data based on sidebar selections ---
     date_range_tuple = cast(Tuple[datetime.date, datetime.date], date_range)
     odds_range_tuple = cast(Tuple[float, float], odds_range)
     ev_range_tuple = cast(Tuple[float, float], ev_range)
 
-    # Apply filters
     start_date, end_date = pd.to_datetime(date_range_tuple[0]), pd.to_datetime(
         date_range_tuple[1]
     )
@@ -93,42 +111,130 @@ def run() -> None:
         & (df_full["expected_value"] <= ev_range_tuple[1])
     ].copy()
 
-    # --- Main Content ---
     if df.empty:
         st.info("No bets match the current filter criteria.")
         return
 
-    # --- Key Performance Indicators (KPIs) ---
-    st.header("Performance Overview")
+    # --- Main Page Layout ---
+    st.header("📈 Performance Overview")
     total_bets = len(df)
     total_pnl = df["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
-    win_rate = (df["winner"].sum() / total_bets) * 100 if total_bets > 0 else 0
+    # FIX: Remove unused win_rate variable to resolve Ruff F841 error
     avg_odds = df["odds"].mean()
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Bets", f"{total_bets:,}")
     col2.metric("Total P/L (Units)", f"{total_pnl:,.2f}")
     col3.metric("ROI", f"{roi:.2f}%")
-    col4.metric("Win Rate", f"{win_rate:.2f}%")
-    col5.metric("Avg. Odds", f"{avg_odds:.2f}")
+    col4.metric("Avg. Odds", f"{avg_odds:.2f}")
 
     st.divider()
 
-    # --- Cumulative Profit Chart ---
-    st.header("Cumulative Profit/Loss Over Time")
-    df["cumulative_pnl"] = df["pnl"].cumsum()
-    st.line_chart(df.set_index("tourney_date")["cumulative_pnl"])
+    # --- Bankroll Simulation Section ---
+    st.header("🏦 Bankroll Growth Simulation")
+    sim_col1, sim_col2 = st.columns([1, 3])
+
+    with sim_col1:
+        st.subheader("Simulation Settings")
+        initial_bankroll = st.number_input("Initial Bankroll", value=1000.0, step=100.0)
+        staking_strategy = st.selectbox(
+            "Staking Strategy", ["kelly", "flat", "percent"]
+        )
+        kelly_fraction = (
+            st.slider("Kelly Fraction", 0.01, 1.0, 0.1, 0.01)
+            if staking_strategy == "kelly"
+            else 0.5
+        )
+        stake_unit = (
+            st.number_input("Stake Unit / Percent", value=10.0, step=1.0)
+            if staking_strategy != "kelly"
+            else 10.0
+        )
+
+    simulated_df = simulate_bankroll_growth(
+        df.copy(),
+        initial_bankroll=initial_bankroll,
+        strategy=staking_strategy,
+        stake_unit=stake_unit,
+        kelly_fraction=kelly_fraction,
+    )
+
+    with sim_col2:
+        if not simulated_df.empty:
+            peak_bankroll, max_dd = calculate_max_drawdown(simulated_df["bankroll"])
+            final_bankroll = simulated_df["bankroll"].iloc[-1]
+
+            st.subheader("Simulation Results")
+            kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+            kpi_col1.metric("Final Bankroll", f"${final_bankroll:,.2f}")
+            kpi_col2.metric("Peak Bankroll", f"${peak_bankroll:,.2f}")
+            kpi_col3.metric("Max Drawdown", f"{max_dd:.2%}")
+
+            st.line_chart(simulated_df.set_index("tourney_date")["bankroll"])
 
     st.divider()
 
-    # --- Data View ---
-    st.header("Filtered Bet History")
+    # --- Performance Breakdown Section ---
+    st.header("📊 Performance Breakdown")
+    breakdown_col1, breakdown_col2 = st.columns(2)
+
+    with breakdown_col1:
+        st.subheader("By Odds Bucket")
+        odds_bins = [1, 1.5, 2, 2.5, 3, 5, 10, 20]
+        df["odds_bucket"] = pd.cut(df["odds"], bins=odds_bins, right=False)
+        odds_summary = (
+            df.groupby("odds_bucket", observed=True)
+            .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
+            .reset_index()
+        )
+        odds_summary["roi"] = (odds_summary["pnl"] / odds_summary["bets"]) * 100
+        st.dataframe(
+            odds_summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
+            use_container_width=True,
+        )
+
+    with breakdown_col2:
+        st.subheader("By Expected Value (EV)")
+        ev_bins = [-0.1, 0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0, df["expected_value"].max()]
+        df["ev_bucket"] = pd.cut(df["expected_value"], bins=ev_bins, right=False)
+        ev_summary = (
+            df.groupby("ev_bucket", observed=True)
+            .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
+            .reset_index()
+        )
+        ev_summary["roi"] = (ev_summary["pnl"] / ev_summary["bets"]) * 100
+        st.dataframe(
+            ev_summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
+            use_container_width=True,
+        )
+
+    st.subheader("By Player Rank Difference")
+    if "rank_diff" in df.columns and df["rank_diff"].notna().any():
+        rank_bins = [-1000, -200, -100, -50, 0, 50, 100, 200, 1000]
+        df["rank_diff_bucket"] = pd.cut(df["rank_diff"], bins=rank_bins, right=False)
+        rank_summary = (
+            df.groupby("rank_diff_bucket", observed=True)
+            .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
+            .reset_index()
+        )
+        rank_summary["roi"] = (rank_summary["pnl"] / rank_summary["bets"]) * 100
+        st.dataframe(
+            rank_summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
+            use_container_width=True,
+        )
+    else:
+        st.warning("Rank difference data not available in backtest results.")
+
+    st.divider()
+
+    # --- Filtered Bet History ---
+    st.header("📜 Filtered Bet History")
     st.dataframe(
         df[
             [
                 "tourney_date",
-                "market_id",
+                "tourney_name",
                 "odds",
                 "predicted_prob",
                 "expected_value",
@@ -136,7 +242,7 @@ def run() -> None:
                 "winner",
                 "pnl",
             ]
-        ].tail(100)
+        ].tail(200)
     )
 
 

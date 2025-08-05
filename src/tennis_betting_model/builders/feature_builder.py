@@ -1,3 +1,4 @@
+# FILE: src/tennis_betting_model/builders/feature_builder.py
 import pandas as pd
 from tennis_betting_model.utils.common import get_most_recent_ranking
 from tennis_betting_model.utils.constants import ELO_INITIAL_RATING
@@ -25,7 +26,7 @@ class FeatureBuilder:
         self.player_info_lookup = player_info_lookup
         self.df_rankings = df_rankings
 
-        # --- FINAL FIX: Force df_matches tourney_date to be UTC-aware on initialization ---
+        # FIX: Force df_matches tourney_date to be UTC-aware on initialization
         self.df_matches = df_matches.copy()
         self.df_matches["tourney_date"] = pd.to_datetime(
             self.df_matches["tourney_date"], utc=True
@@ -81,8 +82,10 @@ class FeatureBuilder:
             self.df_matches, p1_id, p2_id, match_date
         )
 
+        # --- ENHANCEMENT: Ensure market_id is included for joins ---
         # Assemble feature dictionary
         feature_dict = {
+            "market_id": match_id,
             "p1_id": p1_id,
             "p2_id": p2_id,
             "p1_rank": p1_rank,

@@ -15,13 +15,17 @@ def mock_dependencies():
         "p1_rank",
         "p2_rank",
         "rank_diff",
-    ]  # Simplified for test
+        "p1_hand_R",
+        "p2_hand_R",
+    ]
 
     mock_feature_builder = MagicMock(spec=FeatureBuilder)
     mock_feature_builder.build_features.return_value = {
         "p1_rank": 10,
         "p2_rank": 20,
         "rank_diff": -10,
+        "p1_hand_R": 1,
+        "p2_hand_R": 0,
     }
 
     mock_betting_config = {"ev_threshold": 0.1}
@@ -45,13 +49,13 @@ def mock_market_data():
 
     mock_book = MagicMock()
     p1_runner_book = MagicMock()
-    p1_runner_book.ex.available_to_back = [
-        MagicMock(price=2.0)
-    ]  # Value bet: 0.6 * 2.0 - 1 = 0.2 EV
+    p1_runner_book.selection_id = 101
+    # FIX: Use a list of dicts to correctly mock the price data structure
+    p1_runner_book.ex.available_to_back = [{"price": 2.0, "size": 100}]  # Value bet
     p2_runner_book = MagicMock()
-    p2_runner_book.ex.available_to_back = [
-        MagicMock(price=1.8)
-    ]  # Not value: 0.4 * 1.8 - 1 = -0.28 EV
+    p2_runner_book.selection_id = 102
+    # FIX: Use a list of dicts to correctly mock the price data structure
+    p2_runner_book.ex.available_to_back = [{"price": 1.8, "size": 100}]  # Not value
     mock_book.runners = [p1_runner_book, p2_runner_book]
 
     return mock_market, mock_book

@@ -1,57 +1,44 @@
-# .github/workflows/run_pipeline.yml
-
-name: Run PuntingPro Full Pipeline
-
+# /.github/workflows/run_stream.yml
+name: Run PuntingPro Live Stream Bot
 on:
   schedule:
-    # Runs every 15 minutes
     - cron: '*/15 * * * *'
   workflow_dispatch:
-
 jobs:
-  run-live-pipeline:
+  run-live-stream:
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
       id-token: 'write'
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-          cache: 'pip' # Leverages caching for pip dependencies
-
+          cache: 'pip'
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
-
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
-
-      - name: Download Data and Models from GCS
+      - name: Download Processed Data and Models from GCS
         run: |
-          mkdir -p ./data/processed ./models ./data/raw/tennis_atp ./data/raw/tennis_wta
-          # Use rsync to only download new or changed files, making the run much faster.
+          mkdir -p ./data/processed ./models
           gcloud storage rsync -r gs://puntingpro-data-lucap/processed ./data/processed
           gcloud storage rsync -r gs://puntingpro-data-lucap/models ./models
-          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/tennis_atp ./data/raw/tennis_atp
-          gcloud storage rsync -r gs://puntingpro-data-lucap/raw/tennis_wta ./data/raw/tennis_wta
-
       - name: Create Betfair Certs
         run: |
           mkdir -p certs
           echo "${{ secrets.BF_GHA_CERT }}" > certs/betfair.crt
           echo "${{ secrets.BF_GHA_KEY }}" > certs/betfair.key
-
       - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run the automation script
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Run the live streaming bot
         env:
           PROXY_URL: ${{ secrets.PROXY_URL }}
           BF_USER: ${{ secrets.BF_USER }}
@@ -59,11 +46,5 @@ jobs:
           BF_APP_KEY: ${{ secrets.BF_APP_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -u main.py automate
-
-      - name: Upload Analysis Results to GCS
-        run: |
-          echo "Uploading generated analysis files to Google Cloud Storage..."
-          # Use rsync here as well for efficient uploads
-          gcloud storage rsync -r ./data/analysis gs://puntingpro-data-lucap/analysis/
-        continue-on-error: true # Don't fail the job if analysis files don't exist
+        run:
+          python -u main.py stream
