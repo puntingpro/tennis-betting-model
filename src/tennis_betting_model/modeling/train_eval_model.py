@@ -26,7 +26,8 @@ def objective_lgbm(trial: optuna.Trial, X_train, y_train, X_val, y_val) -> float
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
     }
-    model = lgb.LGBMClassifier(**params, random_state=42)
+    # FIX: Add 'type: ignore' to resolve mypy error with dynamic kwargs
+    model = lgb.LGBMClassifier(**params, random_state=42)  # type: ignore
     model.fit(
         X_train,
         y_train,
