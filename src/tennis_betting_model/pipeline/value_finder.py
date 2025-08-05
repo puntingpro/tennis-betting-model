@@ -22,6 +22,30 @@ class MarketProcessor:
         # Use Decimal for precise financial calculations
         self.ev_threshold = Decimal(str(betting_config.get("ev_threshold", 0.1)))
 
+    def _check_player_for_value(
+        self, market_catalogue, runner_meta, runner_book, win_prob
+    ) -> dict | None:
+        """Checks a single player/runner for a value bet."""
+        if runner_book.ex.available_to_back:
+            odds = Decimal(str(runner_book.ex.available_to_back[0]["price"]))
+            ev = (win_prob * odds) - Decimal("1.0")
+            if ev > self.ev_threshold:
+                kelly_denominator = odds - Decimal("1.0")
+                kelly = (
+                    (ev / kelly_denominator)
+                    if kelly_denominator > 0
+                    else Decimal("0.0")
+                )
+                return self._create_bet_info(
+                    market_catalogue,
+                    runner_meta,
+                    odds,
+                    win_prob,
+                    ev,
+                    kelly,
+                )
+        return None
+
     def process_market(self, market_catalogue, market_book) -> list:
         """
         Analyzes a single market and returns any identified value bets.
@@ -69,49 +93,18 @@ class MarketProcessor:
 
             value_bets = []
 
-            # Check Player 1 for value
-            if p1_book.ex.available_to_back:
-                p1_odds = Decimal(str(p1_book.ex.available_to_back[0]["price"]))
-                p1_ev = (win_prob_p1 * p1_odds) - Decimal("1.0")
-                if p1_ev > self.ev_threshold:
-                    kelly_denominator = p1_odds - Decimal("1.0")
-                    p1_kelly = (
-                        (p1_ev / kelly_denominator)
-                        if kelly_denominator > 0
-                        else Decimal("0.0")
-                    )
-                    value_bets.append(
-                        self._create_bet_info(
-                            market_catalogue,
-                            p1_meta,
-                            p1_odds,
-                            win_prob_p1,
-                            p1_ev,
-                            p1_kelly,
-                        )
-                    )
+            # Check players for value using the helper method
+            p1_bet = self._check_player_for_value(
+                market_catalogue, p1_meta, p1_book, win_prob_p1
+            )
+            if p1_bet:
+                value_bets.append(p1_bet)
 
-            # Check Player 2 for value
-            if p2_book.ex.available_to_back:
-                p2_odds = Decimal(str(p2_book.ex.available_to_back[0]["price"]))
-                p2_ev = (win_prob_p2 * p2_odds) - Decimal("1.0")
-                if p2_ev > self.ev_threshold:
-                    kelly_denominator = p2_odds - Decimal("1.0")
-                    p2_kelly = (
-                        (p2_ev / kelly_denominator)
-                        if kelly_denominator > 0
-                        else Decimal("0.0")
-                    )
-                    value_bets.append(
-                        self._create_bet_info(
-                            market_catalogue,
-                            p2_meta,
-                            p2_odds,
-                            win_prob_p2,
-                            p2_ev,
-                            p2_kelly,
-                        )
-                    )
+            p2_bet = self._check_player_for_value(
+                market_catalogue, p2_meta, p2_book, win_prob_p2
+            )
+            if p2_bet:
+                value_bets.append(p2_bet)
 
             return value_bets
 

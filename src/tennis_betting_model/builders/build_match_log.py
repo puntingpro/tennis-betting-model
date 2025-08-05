@@ -74,7 +74,25 @@ def main(config: dict):
     )
 
     if match_log_df.empty:
-        log_warning("Γ£ûΓîÅ No valid, settled matches were found in the summary data.")
+        log_warning(
+            "⚠️ No valid, settled matches were found in the summary data. The match log will be empty."
+        )
+        # Save an empty file with headers to prevent downstream errors
+        output_path = Path(paths["betfair_match_log"])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            columns=[
+                "match_id",
+                "tourney_date",
+                "tourney_name",
+                "winner_id",
+                "winner_historical_id",
+                "winner_name",
+                "loser_id",
+                "loser_historical_id",
+                "loser_name",
+            ]
+        ).to_csv(output_path, index=False)
         return
 
     match_log_df.sort_values(by="tourney_date", inplace=True)

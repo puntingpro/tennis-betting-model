@@ -117,6 +117,23 @@ def main():
         dest="command", required=True, help="Available commands"
     )
 
+    # --- Command to Function Mapping ---
+    command_functions = {
+        "stream": run_stream,
+        "prepare-data": run_data_preparation_pipeline,
+        "create-player-map": run_player_map_pipeline,
+        "build": run_build_pipeline,
+        "model": train_model,
+        "backtest": run_backtest,
+        "summarize-tournaments": summarize_tournaments,
+        "profitability": analyze_profitability,
+        "plot-leaderboard": plot_leaderboard,
+        "list-tournaments": list_tournaments,
+        "review-mappings": run_review_mappings_command,
+        "dashboard": run_dashboard_command,
+    }
+
+    # --- Define Parsers ---
     p_stream = subparsers.add_parser(
         "stream", help="Run the live, real-time trading bot using the Stream API."
     )
@@ -125,31 +142,19 @@ def main():
         action="store_true",
         help="Run in dry-run mode to see potential bets without placing real money.",
     )
-    p_stream.set_defaults(func=run_stream)
 
-    p_prepare = subparsers.add_parser(
+    subparsers.add_parser(
         "prepare-data", help="Prepare raw data sources (players, rankings, raw odds)."
     )
-    p_prepare.set_defaults(func=run_data_preparation_pipeline)
-
-    p_map = subparsers.add_parser(
+    subparsers.add_parser(
         "create-player-map", help="Generate the player ID mapping file."
     )
-    p_map.set_defaults(func=run_player_map_pipeline)
-
-    p_build = subparsers.add_parser("build", help="Enrich data and build all features.")
-    p_build.set_defaults(func=run_build_pipeline)
-
-    p_model = subparsers.add_parser(
-        "model", help="Train and evaluate the LightGBM model."
-    )
-    p_model.set_defaults(func=train_model)
-
+    subparsers.add_parser("build", help="Enrich data and build all features.")
+    subparsers.add_parser("model", help="Train and evaluate the LightGBM model.")
     p_backtest = subparsers.add_parser("backtest", help="Run a historical backtest.")
     p_backtest.add_argument(
         "mode", choices=["simulation", "realistic"], help="The backtesting mode to run."
     )
-    p_backtest.set_defaults(func=run_backtest)
 
     p_analysis = subparsers.add_parser(
         "analysis", help="Run analysis on backtest results."
@@ -157,17 +162,12 @@ def main():
     analysis_subparsers = p_analysis.add_subparsers(
         dest="analysis_command", required=True
     )
-
-    p_summarize = analysis_subparsers.add_parser(
+    analysis_subparsers.add_parser(
         "summarize-tournaments", help="Summarize results by tournament category."
     )
-    p_summarize.set_defaults(func=summarize_tournaments)
-
-    p_profitability = analysis_subparsers.add_parser(
+    analysis_subparsers.add_parser(
         "profitability", help="Analyze profitability of betting strategies."
     )
-    p_profitability.set_defaults(func=analyze_profitability)
-
     p_plot = analysis_subparsers.add_parser(
         "plot-leaderboard", help="Plot tournament leaderboard by ROI."
     )
@@ -176,8 +176,6 @@ def main():
         action="store_true",
         help="If set, displays the leaderboard plot interactively.",
     )
-    p_plot.set_defaults(func=plot_leaderboard)
-
     p_list = analysis_subparsers.add_parser(
         "list-tournaments",
         help="List all unique tournament names found in the data.",
@@ -187,24 +185,24 @@ def main():
         type=int,
         help="Optional: Filter tournaments by a specific year.",
     )
-    p_list.set_defaults(func=list_tournaments)
-
-    p_review = analysis_subparsers.add_parser(
+    analysis_subparsers.add_parser(
         "review-mappings",
         help="Launch the interactive tool to review and correct player mappings.",
     )
-    p_review.set_defaults(func=run_review_mappings_command)
-
-    p_dash = subparsers.add_parser(
+    subparsers.add_parser(
         "dashboard", help="Launch the interactive performance dashboard."
     )
-    p_dash.set_defaults(func=run_dashboard_command)
 
     args = parser.parse_args()
     setup_logging()
 
-    if hasattr(args, "func"):
-        args.func(args)
+    # --- Execute Command ---
+    command = args.command
+    if args.command == "analysis":
+        command = args.analysis_command
+
+    if command in command_functions:
+        command_functions[command](args)
     else:
         parser.print_help()
 

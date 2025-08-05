@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 from pathlib import Path
-from typing import cast, Tuple
+from typing import cast, Tuple, List, Any
 import datetime
 
 from tennis_betting_model.utils.logger import setup_logging, log_error
@@ -46,6 +46,32 @@ def load_backtest_data(paths: dict) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def create_summary_table(
+    df: pd.DataFrame, column: str, bins: List[Any], title: str
+) -> None:
+    """Creates and displays a summary table for a given column, bucketing the data."""
+    st.subheader(title)
+    if column not in df.columns or df[column].isnull().all():
+        st.warning(f"Data for '{column}' is not available to generate summary.")
+        return
+
+    # For EV, we need to dynamically add the max value to the bins
+    if column == "expected_value" and not df.empty:
+        bins.append(df["expected_value"].max())
+
+    df[f"{column}_bucket"] = pd.cut(df[column], bins=bins, right=False)
+    summary = (
+        df.groupby(f"{column}_bucket", observed=True)
+        .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
+        .reset_index()
+    )
+    summary["roi"] = (summary["pnl"] / summary["bets"]) * 100
+    st.dataframe(
+        summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
+        use_container_width=True,
+    )
+
+
 def run() -> None:
     """Main function to run the enhanced Streamlit dashboard."""
     st.set_page_config(layout="wide", page_title="Performance Dashboard")
@@ -59,6 +85,7 @@ def run() -> None:
     try:
         config = load_config("config.yaml")
         paths = config["data_paths"]
+        analysis_params = config.get("analysis_params", {})
         df_full = load_backtest_data(paths)
     except Exception as e:
         st.error(f"Failed to load configuration or data. Error: {e}")
@@ -120,7 +147,6 @@ def run() -> None:
     total_bets = len(df)
     total_pnl = df["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
-    # FIX: Remove unused win_rate variable to resolve Ruff F841 error
     avg_odds = df["odds"].mean()
 
     col1, col2, col3, col4 = st.columns(4)
@@ -132,7 +158,7 @@ def run() -> None:
     st.divider()
 
     # --- Bankroll Simulation Section ---
-    st.header("🏦 Bankroll Growth Simulation")
+    st.header("💰 Bankroll Growth Simulation")
     sim_col1, sim_col2 = st.columns([1, 3])
 
     with sim_col1:
@@ -180,56 +206,32 @@ def run() -> None:
     breakdown_col1, breakdown_col2 = st.columns(2)
 
     with breakdown_col1:
-        st.subheader("By Odds Bucket")
-        odds_bins = [1, 1.5, 2, 2.5, 3, 5, 10, 20]
-        df["odds_bucket"] = pd.cut(df["odds"], bins=odds_bins, right=False)
-        odds_summary = (
-            df.groupby("odds_bucket", observed=True)
-            .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
-            .reset_index()
-        )
-        odds_summary["roi"] = (odds_summary["pnl"] / odds_summary["bets"]) * 100
-        st.dataframe(
-            odds_summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
-            use_container_width=True,
+        create_summary_table(
+            df.copy(),
+            "odds",
+            analysis_params.get("odds_bins", []),
+            "By Odds Bucket",
         )
 
     with breakdown_col2:
-        st.subheader("By Expected Value (EV)")
-        ev_bins = [-0.1, 0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0, df["expected_value"].max()]
-        df["ev_bucket"] = pd.cut(df["expected_value"], bins=ev_bins, right=False)
-        ev_summary = (
-            df.groupby("ev_bucket", observed=True)
-            .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
-            .reset_index()
-        )
-        ev_summary["roi"] = (ev_summary["pnl"] / ev_summary["bets"]) * 100
-        st.dataframe(
-            ev_summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
-            use_container_width=True,
+        create_summary_table(
+            df.copy(),
+            "expected_value",
+            analysis_params.get("ev_bins", []),
+            "By Expected Value (EV)",
         )
 
-    st.subheader("By Player Rank Difference")
-    if "rank_diff" in df.columns and df["rank_diff"].notna().any():
-        rank_bins = [-1000, -200, -100, -50, 0, 50, 100, 200, 1000]
-        df["rank_diff_bucket"] = pd.cut(df["rank_diff"], bins=rank_bins, right=False)
-        rank_summary = (
-            df.groupby("rank_diff_bucket", observed=True)
-            .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
-            .reset_index()
-        )
-        rank_summary["roi"] = (rank_summary["pnl"] / rank_summary["bets"]) * 100
-        st.dataframe(
-            rank_summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
-            use_container_width=True,
-        )
-    else:
-        st.warning("Rank difference data not available in backtest results.")
+    create_summary_table(
+        df.copy(),
+        "rank_diff",
+        analysis_params.get("rank_bins", []),
+        "By Player Rank Difference",
+    )
 
     st.divider()
 
     # --- Filtered Bet History ---
-    st.header("📜 Filtered Bet History")
+    st.header("📋 Filtered Bet History")
     st.dataframe(
         df[
             [

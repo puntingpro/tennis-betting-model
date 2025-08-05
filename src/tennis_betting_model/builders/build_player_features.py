@@ -3,10 +3,11 @@
 import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
 from collections import defaultdict
 
 from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.data_loader import load_all_pipeline_data
 from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
@@ -18,83 +19,15 @@ from tennis_betting_model.utils.schema import validate_data
 from tennis_betting_model.utils.constants import ELO_INITIAL_RATING
 
 
-def _load_data(
-    paths: dict,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Loads all necessary dataframes for feature building."""
-    log_info("Loading consolidated data and other required files...")
-    try:
-        df_matches_raw = pd.read_csv(paths["betfair_match_log"])
-        df_rankings = pd.read_csv(paths["consolidated_rankings"])
-        df_players = pd.read_csv(paths["raw_players"], encoding="latin-1")
-        df_elo = pd.read_csv(paths["elo_ratings"])
-
-        df_players["player_id"] = pd.to_numeric(
-            df_players["player_id"], errors="coerce"
-        )
-        df_players.dropna(subset=["player_id"], inplace=True)
-        df_players["player_id"] = df_players["player_id"].astype("int64")
-
-        df_rankings["ranking_date"] = pd.to_datetime(
-            df_rankings["ranking_date"], utc=True
-        )
-        df_rankings = df_rankings.sort_values("ranking_date")
-
-        df_matches_raw["tourney_date"] = pd.to_datetime(
-            df_matches_raw["tourney_date"], utc=True
-        )
-
-        df_matches_raw["winner_historical_id"] = pd.to_numeric(
-            df_matches_raw["winner_historical_id"], errors="coerce"
-        )
-        df_matches_raw["loser_historical_id"] = pd.to_numeric(
-            df_matches_raw["loser_historical_id"], errors="coerce"
-        )
-        df_matches_raw.dropna(
-            subset=["winner_historical_id", "loser_historical_id"], inplace=True
-        )
-        df_matches_raw = df_matches_raw.astype(
-            {"winner_historical_id": "int64", "loser_historical_id": "int64"}
-        )
-        df_matches_raw["match_id"] = df_matches_raw["match_id"].astype(str)
-        df_elo["match_id"] = df_elo["match_id"].astype(str)
-
-        df_matches_raw["surface"] = df_matches_raw["tourney_name"].apply(get_surface)
-
-        return df_matches_raw, df_rankings, df_players, df_elo
-    except FileNotFoundError as e:
-        log_error(f"A required data file was not found. Error: {e}")
-        raise
-
-
-def main(args):
-    """Main workflow for building all player features using a stateful, chronological approach."""
-    setup_logging()
-
-    config = load_config(args.config)
-    paths = config["data_paths"]
-
-    df_matches, df_rankings, df_players, df_elo = _load_data(paths)
-
-    df_matches = validate_data(
-        df_matches, "betfair_match_log", "Initial Betfair Match Log"
-    )
-
-    log_info("--- Starting High-Performance Feature Engineering ---")
-
-    player_info_lookup = (
-        df_players[["player_id", "hand"]]
-        .drop_duplicates("player_id")
-        .set_index("player_id")
-        .to_dict("index")
-    )
-
-    df_elo_lookup = df_elo.set_index("match_id")
-
-    # Sort matches chronologically to process them in order
-    df_matches = df_matches.sort_values("tourney_date").reset_index(drop=True)
-
-    # Initialize state dictionaries
+def _generate_features_chronologically(
+    df_matches: pd.DataFrame,
+    df_rankings: pd.DataFrame,
+    df_elo_lookup: pd.DataFrame,
+    player_info_lookup: dict,
+) -> pd.DataFrame:
+    """
+    Processes matches chronologically to build point-in-time features.
+    """
     player_stats: Dict[int, Any] = defaultdict(
         lambda: {
             "matches_played": 0,
@@ -106,6 +39,8 @@ def main(args):
     )
     h2h_stats: Dict[str, Any] = defaultdict(lambda: {"p1_wins": 0, "p2_wins": 0})
     all_features = []
+
+    df_matches["surface"] = df_matches["tourney_name"].apply(get_surface)
 
     for row in tqdm(
         df_matches.itertuples(),
@@ -183,7 +118,6 @@ def main(args):
             else 0
         )
 
-        # FIX: Use the unpacked date 'd' directly, not d[0], as the loop already unpacks the tuple
         p1_matches_last_7 = sum(
             1 for d, _ in p1_recent_matches if (match_date - d).days <= 7
         )
@@ -232,25 +166,44 @@ def main(args):
         all_features.append(feature_dict)
 
         # --- UPDATE STATE for the next iteration ---
-        # Winner stats
         player_stats[winner_id]["matches_played"] += 1
         player_stats[winner_id]["wins"] += 1
         player_stats[winner_id]["surface_matches"][surface] += 1
         player_stats[winner_id]["surface_wins"][surface] += 1
         player_stats[winner_id]["recent_matches"].append((match_date, True))
 
-        # Loser stats
         player_stats[loser_id]["matches_played"] += 1
         player_stats[loser_id]["surface_matches"][surface] += 1
         player_stats[loser_id]["recent_matches"].append((match_date, False))
 
-        # H2H stats
         if p1_id == winner_id:
             h2h_stats[h2h_key]["p1_wins"] += 1
         else:
             h2h_stats[h2h_key]["p2_wins"] += 1
 
-    final_df = pd.DataFrame(all_features)
+    return pd.DataFrame(all_features)
+
+
+def main(args):
+    """Main workflow for building all player features using a stateful, chronological approach."""
+    setup_logging()
+    config = load_config(args.config)
+    paths = config["data_paths"]
+
+    try:
+        df_matches, df_rankings, _, df_elo, player_info_lookup = load_all_pipeline_data(
+            paths
+        )
+    except FileNotFoundError:
+        return  # Errors are logged in the load function
+
+    log_info("--- Starting High-Performance Feature Engineering ---")
+    df_elo_lookup = df_elo.set_index("match_id")
+    df_matches = df_matches.sort_values("tourney_date").reset_index(drop=True)
+
+    final_df = _generate_features_chronologically(
+        df_matches, df_rankings, df_elo_lookup, player_info_lookup
+    )
 
     if final_df.empty:
         log_error("No features were generated. The resulting DataFrame is empty.")

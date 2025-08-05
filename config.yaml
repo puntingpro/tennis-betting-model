@@ -44,6 +44,7 @@ training_params:
 live_trading_params:
   poll_hours_ahead: 12      # How many hours into the future to look for markets.
   order_timeout_seconds: 120  # Cancel unmatched bets after this many seconds.
+  stream_limit: 195 # Max markets for the Betfair Stream API subscription.
 
 # -----------------------------------------------------------------------------
 # Betting & Live Pipeline Configuration
@@ -80,6 +81,10 @@ analysis_strategies:
 analysis_params:
   min_bets_for_summary: 100
   leaderboard_top_n: 25
+  # --- NEW: Bins for dashboard analysis ---
+  odds_bins: [1, 1.5, 2, 2.5, 3, 5, 10, 20]
+  ev_bins: [-0.1, 0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
+  rank_bins: [-1000, -200, -100, -50, 0, 50, 100, 200, 1000]
 
 # -----------------------------------------------------------------------------
 # Bankroll Simulation Parameters

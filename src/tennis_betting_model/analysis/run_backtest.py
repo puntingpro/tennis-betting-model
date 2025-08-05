@@ -1,8 +1,11 @@
+# src/tennis_betting_model/analysis/run_backtest.py
 import pandas as pd
 import joblib
 import argparse
 import numpy as np
 from pathlib import Path
+from typing import cast
+
 from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
@@ -14,48 +17,69 @@ from tennis_betting_model.utils.betting_math import add_ev_and_kelly, calculate_
 from tennis_betting_model.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
 
 
+def _run_simulation_backtest(df: pd.DataFrame) -> pd.DataFrame:
+    """Runs a backtest simulating odds based on Elo ratings."""
+    log_info("Simulating odds based on Elo and finding value...")
+    df["p1_elo_prob"] = 1 / (1 + 10 ** ((df["p2_elo"] - df["p1_elo"]) / 400))
+    df["p2_elo_prob"] = 1 - df["p1_elo_prob"]
+    df["p1_odds"] = np.where(
+        df["p1_elo_prob"] > 0,
+        (1 / df["p1_elo_prob"]) / BOOKMAKER_MARGIN,
+        BACKTEST_MAX_ODDS,
+    ).clip(max=BACKTEST_MAX_ODDS)
+    df["p2_odds"] = np.where(
+        df["p2_elo_prob"] > 0,
+        (1 / df["p2_elo_prob"]) / BOOKMAKER_MARGIN,
+        BACKTEST_MAX_ODDS,
+    ).clip(max=BACKTEST_MAX_ODDS)
+    bets_df = df.copy()
+    bets_df.rename(columns={"match_id": "market_id"}, inplace=True)
+    return bets_df
+
+
+def _run_realistic_backtest(
+    df: pd.DataFrame, market_data_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Runs a backtest using pre-processed, realistic market odds."""
+    log_info("Merging model features with clean market data...")
+    df["tourney_date"] = pd.to_datetime(df["tourney_date"]).dt.date
+    market_data_df["tourney_date"] = pd.to_datetime(
+        market_data_df["tourney_date"]
+    ).dt.date
+    bets_df = pd.merge(df, market_data_df, on=["p1_id", "p2_id", "tourney_date"])
+    if bets_df.empty:
+        log_error("Could not merge any features with the backtest market data.")
+        return pd.DataFrame()
+    log_info(f"Successfully merged {len(bets_df)} markets. Making predictions...")
+    bets_df.rename(columns={"winner_y": "winner"}, inplace=True)
+    return bets_df
+
+
 def run_backtest(
-    df, model, ev_threshold, confidence_threshold, mode, market_data_df=None
-):
+    df: pd.DataFrame,
+    model,
+    ev_threshold: float,
+    confidence_threshold: float,
+    mode: str,
+    market_data_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """
     A unified function to run backtests in either 'simulation' or 'realistic' mode.
     """
     if mode == "simulation":
-        log_info("Simulating odds based on Elo and finding value...")
-        df["p1_elo_prob"] = 1 / (1 + 10 ** ((df["p2_elo"] - df["p1_elo"]) / 400))
-        df["p2_elo_prob"] = 1 - df["p1_elo_prob"]
-        df["p1_odds"] = np.where(
-            df["p1_elo_prob"] > 0,
-            (1 / df["p1_elo_prob"]) / BOOKMAKER_MARGIN,
-            BACKTEST_MAX_ODDS,
-        ).clip(upper=BACKTEST_MAX_ODDS)
-        df["p2_odds"] = np.where(
-            df["p2_elo_prob"] > 0,
-            (1 / df["p2_elo_prob"]) / BOOKMAKER_MARGIN,
-            BACKTEST_MAX_ODDS,
-        ).clip(upper=BACKTEST_MAX_ODDS)
-
-        bets_df = df.copy()
-        bets_df.rename(columns={"match_id": "market_id"}, inplace=True)
-
+        bets_df = _run_simulation_backtest(df)
     elif mode == "realistic":
-        log_info("Merging model features with clean market data...")
-        df["tourney_date"] = pd.to_datetime(df["tourney_date"]).dt.date
-        market_data_df["tourney_date"] = pd.to_datetime(
-            market_data_df["tourney_date"]
-        ).dt.date
-
-        bets_df = pd.merge(df, market_data_df, on=["p1_id", "p2_id", "tourney_date"])
-        if bets_df.empty:
-            log_error("Could not merge any features with the backtest market data.")
+        if market_data_df is None or market_data_df.empty:
+            log_error(
+                "Market data is required for 'realistic' mode but was not provided."
+            )
             return pd.DataFrame()
-        log_info(f"Successfully merged {len(bets_df)} markets. Making predictions...")
-
-        # Use winner data from the market file
-        bets_df.rename(columns={"winner_y": "winner"}, inplace=True)
-
+        bets_df = _run_realistic_backtest(df, market_data_df)
     else:
         raise ValueError(f"Invalid mode '{mode}'. Choose 'simulation' or 'realistic'.")
+
+    if bets_df.empty:
+        return pd.DataFrame()
 
     # --- Common Logic: Predictions and Value Calculation ---
     bets_df["p1_predicted_prob"] = model.predict_proba(
@@ -65,11 +89,9 @@ def run_backtest(
 
     # --- ENHANCEMENT: Add surface to output for better analysis ---
     base_cols = ["market_id", "tourney_name", "tourney_date", "surface", "winner"]
-
     bets_p1 = bets_df[base_cols].copy()
     bets_p1["odds"] = bets_df["p1_odds"]
     bets_p1["predicted_prob"] = bets_df["p1_predicted_prob"]
-
     bets_p2 = bets_df[base_cols].copy()
     bets_p2["odds"] = bets_df["p2_odds"]
     bets_p2["predicted_prob"] = bets_df["p2_predicted_prob"]
@@ -83,7 +105,7 @@ def run_backtest(
         (all_bets["expected_value"] > ev_threshold)
         & (all_bets["predicted_prob"] > confidence_threshold)
     ]
-    return value_bets
+    return cast(pd.DataFrame, value_bets)
 
 
 def main(args):
@@ -106,7 +128,6 @@ def main(args):
         columns={"winner_historical_id": "p1_id", "loser_historical_id": "p2_id"},
         inplace=True,
     )
-
     features_df.rename(
         columns=lambda c: c.replace("[", "").replace("]", "").replace("<", ""),
         inplace=True,

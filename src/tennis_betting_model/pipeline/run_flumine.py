@@ -16,11 +16,11 @@ from ..pipeline.flumine_strategy import TennisValueStrategy
 from ..pipeline.value_finder import MarketProcessor
 from ..utils.api import login_to_betfair
 from ..utils.config import load_config
-from ..utils.data_loader import load_pipeline_data
+from ..utils.data_loader import load_all_pipeline_data
 from ..utils.logger import log_error, log_info, log_warning, setup_logging
+from ..utils.constants import STREAM_LIMIT
 
 logger = logging.getLogger(__name__)
-STREAM_LIMIT = 195
 
 
 def fetch_and_limit_market_ids(
@@ -63,7 +63,7 @@ def poll_markets(context: dict, flumine):
     lightweight_client = context.get("lightweight_client")
     poll_filter = context.get("poll_filter")
     strategy = context.get("strategy")
-    # FIX: Add assertion to help mypy with potential None types
+
     if not all([lightweight_client, poll_filter, strategy]):
         logger.error("Worker: Missing required objects in context.")
         return
@@ -167,7 +167,9 @@ def main(args):
         if model is None:
             log_error("Model file loaded but is empty (None). Cannot proceed.")
             return
-        player_info_lookup, df_rankings, df_matches, df_elo = load_pipeline_data(paths)
+        df_matches, df_rankings, _, df_elo, player_info_lookup = load_all_pipeline_data(
+            paths
+        )
         feature_builder = FeatureBuilder(
             player_info_lookup, df_rankings, df_matches, df_elo
         )

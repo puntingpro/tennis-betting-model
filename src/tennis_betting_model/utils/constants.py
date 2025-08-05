@@ -9,7 +9,10 @@ BACKTEST_MAX_ODDS = 50.0
 # --- Data Processing & Feature Engineering ---
 ELO_K_FACTOR = 32
 ELO_INITIAL_RATING = 1500
-DEFAULT_PLAYER_RANK = 500
+DEFAULT_PLAYER_RANK = 500  # Moved from common.py
 
 # --- Simulation Defaults ---
 DEFAULT_INITIAL_BANKROLL = 1000.0
+
+# --- Live Trading ---
+STREAM_LIMIT = 195  # Moved from run_flumine.py
