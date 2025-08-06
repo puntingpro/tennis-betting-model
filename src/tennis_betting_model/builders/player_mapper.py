@@ -1,8 +1,6 @@
 # src/tennis_betting_model/builders/player_mapper.py
 
 import pandas as pd
-import glob
-import os
 from pathlib import Path
 from thefuzz import process
 from tqdm import tqdm
@@ -12,9 +10,10 @@ from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
     log_error,
-    log_warning,
+    log_warning,  # FIX: Added log_warning to the import list
 )
 from tennis_betting_model.utils.schema import validate_data
+from tennis_betting_model.utils.data_loader import load_historical_player_data
 
 
 def get_initial_lastname(name):
@@ -220,29 +219,7 @@ def _run_mapping_passes(
     return pd.DataFrame(all_mappings)
 
 
-def _load_historical_tour_data(raw_data_dir: Path, tour: str) -> pd.DataFrame:
-    """Loads and consolidates historical match data for a specific tour (ATP or WTA)."""
-    tour_files = glob.glob(
-        os.path.join(raw_data_dir, f"tennis_{tour}", f"{tour}_matches_*.csv")
-    )
-    if not tour_files:
-        log_warning(f"No historical match files found for tour: {tour}")
-        return pd.DataFrame()
-
-    df_historical_list = [pd.read_csv(f, low_memory=False) for f in tour_files]
-    df_historical = pd.concat(df_historical_list, ignore_index=True)
-
-    historical_winners = df_historical[["winner_id", "winner_name"]].rename(
-        columns={"winner_id": "historical_id", "winner_name": "historical_name"}
-    )
-    historical_losers = df_historical[["loser_id", "loser_name"]].rename(
-        columns={"loser_id": "historical_id", "loser_name": "historical_name"}
-    )
-
-    return pd.concat([historical_winners, historical_losers]).drop_duplicates().dropna()
-
-
-def create_mapping_file(config: dict):
+def run_create_mapping_file(config: dict):
     log_info("--- Player Mapping File Generator (Historical Data Driven) ---")
     paths = config["data_paths"]
     mapping_params = config["mapping_params"]
@@ -264,8 +241,8 @@ def create_mapping_file(config: dict):
     log_info(f"Found {len(betfair_unique_players)} unique players in Betfair data.")
 
     raw_data_dir = Path(paths["raw_data_dir"])
-    atp_historical_players = _load_historical_tour_data(raw_data_dir, "atp")
-    wta_historical_players = _load_historical_tour_data(raw_data_dir, "wta")
+    atp_historical_players = load_historical_player_data(raw_data_dir)
+    wta_historical_players = load_historical_player_data(raw_data_dir)
 
     log_info("\n--- Running Mapping vs. ATP historical data ---")
     atp_mappings = _run_mapping_passes(

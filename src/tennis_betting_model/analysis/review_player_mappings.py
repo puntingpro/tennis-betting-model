@@ -1,42 +1,10 @@
 import pandas as pd
 import streamlit as st
 from pathlib import Path
-import glob
-import os
 from thefuzz import process
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import setup_logging
-
-
-# --- Helper function to load all historical player names ---
-@st.cache_data
-def load_historical_players(raw_data_dir: Path) -> pd.DataFrame:
-    """Loads and consolidates all unique historical player names and IDs."""
-    all_players = []
-    for tour in ["atp", "wta"]:
-        tour_files = glob.glob(
-            os.path.join(raw_data_dir, f"tennis_{tour}", f"{tour}_matches_*.csv")
-        )
-        if not tour_files:
-            continue
-
-        df_tour = pd.concat(
-            [pd.read_csv(f, low_memory=False) for f in tour_files], ignore_index=True
-        )
-
-        winners = df_tour[["winner_id", "winner_name"]].rename(
-            columns={"winner_id": "historical_id", "winner_name": "historical_name"}
-        )
-        losers = df_tour[["loser_id", "loser_name"]].rename(
-            columns={"loser_id": "historical_id", "loser_name": "historical_name"}
-        )
-        all_players.append(pd.concat([winners, losers]))
-
-    if not all_players:
-        return pd.DataFrame(columns=["historical_id", "historical_name"])
-
-    df_historical = pd.concat(all_players).drop_duplicates().dropna()
-    return df_historical
+from tennis_betting_model.utils.data_loader import load_historical_player_data
 
 
 # --- Main Streamlit Application ---
@@ -62,7 +30,7 @@ def run():
             return
 
         df_map = pd.read_csv(map_path)
-        df_historical_players = load_historical_players(raw_data_dir)
+        df_historical_players = load_historical_player_data(raw_data_dir)
         historical_player_list = df_historical_players["historical_name"].tolist()
         historical_player_lookup = df_historical_players.set_index("historical_name")[
             "historical_id"

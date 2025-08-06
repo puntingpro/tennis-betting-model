@@ -40,10 +40,10 @@ def load_backtest_data(paths: dict) -> pd.DataFrame:
         log_error(
             f"Backtest results not found at {paths['backtest_results']}. Please run a backtest first."
         )
-        return pd.DataFrame()
+        return cast(pd.DataFrame, pd.DataFrame())
     except Exception as e:
         st.error(f"An error occurred loading backtest data: {e}")
-        return pd.DataFrame()
+        return cast(pd.DataFrame, pd.DataFrame())
 
 
 def create_summary_table(
@@ -77,7 +77,7 @@ def run() -> None:
     st.set_page_config(layout="wide", page_title="Performance Dashboard")
     setup_logging()
 
-    st.title("🎾 PuntingPro Performance Dashboard")
+    st.title("疾 PuntingPro Performance Dashboard")
     st.markdown(
         "An interactive dashboard to analyze backtesting results and betting strategies."
     )
@@ -143,7 +143,7 @@ def run() -> None:
         return
 
     # --- Main Page Layout ---
-    st.header("📈 Performance Overview")
+    st.header("嶋 Performance Overview")
     total_bets = len(df)
     total_pnl = df["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
@@ -158,7 +158,7 @@ def run() -> None:
     st.divider()
 
     # --- Bankroll Simulation Section ---
-    st.header("💰 Bankroll Growth Simulation")
+    st.header("腸 Bankroll Growth Simulation")
     sim_col1, sim_col2 = st.columns([1, 3])
 
     with sim_col1:
@@ -202,7 +202,7 @@ def run() -> None:
     st.divider()
 
     # --- Performance Breakdown Section ---
-    st.header("📊 Performance Breakdown")
+    st.header("投 Performance Breakdown")
     breakdown_col1, breakdown_col2 = st.columns(2)
 
     with breakdown_col1:
@@ -231,7 +231,7 @@ def run() -> None:
     st.divider()
 
     # --- Filtered Bet History ---
-    st.header("📋 Filtered Bet History")
+    st.header("搭 Filtered Bet History")
     st.dataframe(
         df[
             [

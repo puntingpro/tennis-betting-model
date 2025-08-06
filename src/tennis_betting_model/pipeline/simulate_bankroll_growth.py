@@ -1,13 +1,13 @@
 # src/scripts/pipeline/simulate_bankroll_growth.py
 
 import pandas as pd
+from typing import Dict
 
 from tennis_betting_model.utils.logger import log_info, log_warning
 from tennis_betting_model.utils.common import (
     normalize_df_column_names,
     patch_winner_column,
 )
-from tennis_betting_model.utils.config import load_config
 
 
 def calculate_max_drawdown(bankroll_series: pd.Series) -> tuple[float, float]:
@@ -21,6 +21,7 @@ def calculate_max_drawdown(bankroll_series: pd.Series) -> tuple[float, float]:
 
 def simulate_bankroll_growth(
     df: pd.DataFrame,
+    simulation_params: Dict,
     initial_bankroll: float,
     strategy: str = "kelly",
     stake_unit: float = 10.0,
@@ -29,8 +30,6 @@ def simulate_bankroll_growth(
     """
     Simulates bankroll growth over a series of bets with multiple strategies.
     """
-    config = load_config("config.yaml")
-    simulation_params = config.get("simulation_params", {})
     max_kelly_stake_fraction = simulation_params.get("max_kelly_stake_fraction", 0.1)
     max_profit_per_bet = simulation_params.get("max_profit_per_bet", 10000.0)
 

@@ -3,6 +3,38 @@ import pandas as pd
 from .logger import log_info, log_error, log_success
 from .schema import validate_data
 from typing import Tuple, Dict, Any, cast
+import glob
+import os
+from pathlib import Path
+
+
+def load_historical_player_data(raw_data_dir: Path) -> pd.DataFrame:
+    """Loads and consolidates all unique historical player names and IDs from raw data files."""
+    all_players = []
+    for tour in ["atp", "wta"]:
+        tour_files = glob.glob(
+            os.path.join(raw_data_dir, f"tennis_{tour}", f"{tour}_matches_*.csv")
+        )
+        if not tour_files:
+            continue
+
+        df_tour = pd.concat(
+            [pd.read_csv(f, low_memory=False) for f in tour_files], ignore_index=True
+        )
+
+        winners = df_tour[["winner_id", "winner_name"]].rename(
+            columns={"winner_id": "historical_id", "winner_name": "historical_name"}
+        )
+        losers = df_tour[["loser_id", "loser_name"]].rename(
+            columns={"loser_id": "historical_id", "loser_name": "historical_name"}
+        )
+        all_players.append(pd.concat([winners, losers]))
+
+    if not all_players:
+        return pd.DataFrame(columns=["historical_id", "historical_name"])
+
+    df_historical = pd.concat(all_players).drop_duplicates().dropna()
+    return df_historical
 
 
 def load_all_pipeline_data(
@@ -76,3 +108,65 @@ def load_all_pipeline_data(
     except Exception as e:
         log_error(f"An unexpected error occurred during data loading: {e}")
         raise
+
+
+def load_backtest_data_for_dashboard(paths: dict) -> pd.DataFrame:
+    """Loads and prepares the backtest results data specifically for the dashboard."""
+    try:
+        results_path = Path(paths["backtest_results"])
+        df = pd.read_csv(results_path)
+        df["tourney_date"] = pd.to_datetime(df["tourney_date"])
+
+        if "pnl" not in df.columns:
+            df["pnl"] = df.apply(
+                lambda row: (row["odds"] - 1) * 0.95 if row["winner"] == 1 else -1,
+                axis=1,
+            )
+
+        features_path = Path(paths["consolidated_features"])
+        if features_path.exists():
+            df_features = pd.read_csv(features_path, usecols=["market_id", "rank_diff"])
+            df["market_id"] = df["market_id"].astype(str)
+            df_features["market_id"] = df_features["market_id"].astype(str)
+            df = pd.merge(df, df_features, on="market_id", how="left")
+        else:
+            df["rank_diff"] = 0
+
+        return df.sort_values("tourney_date")
+    except FileNotFoundError:
+        log_error(
+            f"Backtest results not found at {paths['backtest_results']}. Please run a backtest first."
+        )
+        return pd.DataFrame()
+    except Exception as e:
+        log_error(f"An error occurred loading backtest data: {e}")
+        return pd.DataFrame()
+
+
+def load_features_for_backtest(paths: dict) -> pd.DataFrame:
+    """Loads and prepares the consolidated features for backtesting."""
+    log_info(f"Loading historical features from {paths['consolidated_features']}...")
+    df = pd.read_csv(paths["consolidated_features"], parse_dates=["tourney_date"])
+    df.rename(
+        columns={"winner_historical_id": "p1_id", "loser_historical_id": "p2_id"},
+        inplace=True,
+    )
+    df.rename(
+        columns=lambda c: c.replace("[", "").replace("]", "").replace("<", ""),
+        inplace=True,
+    )
+    return df
+
+
+def load_market_data_for_backtest(paths: dict) -> pd.DataFrame:
+    """Loads the clean market data for realistic backtesting."""
+    log_info(
+        f"Loading clean backtest market data from {paths['backtest_market_data']}..."
+    )
+    try:
+        return pd.read_csv(paths["backtest_market_data"], parse_dates=["tourney_date"])
+    except FileNotFoundError:
+        log_error(
+            "Required file not found. Please run the 'build' command to create backtest market data."
+        )
+        return pd.DataFrame()
