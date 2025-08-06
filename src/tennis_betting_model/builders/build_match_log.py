@@ -8,6 +8,9 @@ from src.tennis_betting_model.utils.logger import (
     log_warning,
 )
 
+# --- FIX: Import the get_surface utility ---
+from src.tennis_betting_model.utils.common import get_surface
+
 
 def main(config: dict):
     """
@@ -26,7 +29,6 @@ def main(config: dict):
         )
         return
 
-    # --- FIX: Ensure date column is parsed as timezone-aware ---
     df_raw = pd.read_csv(raw_odds_path, parse_dates=["tourney_date"])
     df_raw["tourney_date"] = pd.to_datetime(df_raw["tourney_date"], utc=True)
 
@@ -73,11 +75,13 @@ def main(config: dict):
         inplace=True,
     )
 
+    # --- FIX: Determine and add the surface column ---
+    match_log_df["surface"] = match_log_df["tourney_name"].apply(get_surface)
+
     if match_log_df.empty:
         log_warning(
             "⚠️ No valid, settled matches were found in the summary data. The match log will be empty."
         )
-        # Save an empty file with headers to prevent downstream errors
         output_path = Path(paths["betfair_match_log"])
         output_path.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(
@@ -85,6 +89,7 @@ def main(config: dict):
                 "match_id",
                 "tourney_date",
                 "tourney_name",
+                "surface",  # Add surface to empty file
                 "winner_id",
                 "winner_historical_id",
                 "winner_name",
@@ -103,6 +108,7 @@ def main(config: dict):
         "match_id",
         "tourney_date",
         "tourney_name",
+        "surface",  # --- FIX: Add surface to the final output ---
         "winner_id",
         "winner_historical_id",
         "winner_name",
