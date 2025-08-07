@@ -25,6 +25,8 @@ def mock_builder_data():
             "surface": ["Hard"],
             "winner_historical_id": [101],
             "loser_historical_id": [102],
+            # --- FIX: Add the missing 'sets_played' column to the mock data ---
+            "sets_played": [3],
         }
     )
 
