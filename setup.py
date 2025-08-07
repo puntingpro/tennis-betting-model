@@ -1,9 +1,36 @@
-# /tennis-betting-model/setup.py
 from setuptools import setup, find_packages
 
-# Read dependencies directly from requirements.txt
-with open("requirements.txt") as f:
-    install_deps = f.read().splitlines()
+# A list of dependencies for the project
+install_deps = [
+    "pandas",
+    "xgboost",
+    "optuna",
+    "joblib",
+    "PyYAML",
+    "requests",
+    "betfairlightweight",
+    "pandera",
+    "orjson",
+    "bz2file",
+    "thefuzz",
+    "python-Levenshtein",
+    "scikit-learn",
+    "unidecode",
+    "matplotlib",
+    "seaborn",
+    "streamlit",
+    "flake8",
+    "mypy",
+    "pandas-stubs",
+    "types-PyYAML",
+    "types-requests",
+    "pytest",
+    "black",
+    "ruff",
+    "pre-commit",
+    "google-cloud-storage",
+    "lightgbm",  # --- FIX: Add missing lightgbm dependency ---
+]
 
 setup(
     name="tennis_betting_model",
@@ -13,7 +40,7 @@ setup(
     description="An automated trading bot for the Betfair Tennis exchange.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    url="ttps://github.com/puntingpro/tennis-betting-model",
+    url="https://github.com/puntingpro/tennis-betting-model",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.9",
