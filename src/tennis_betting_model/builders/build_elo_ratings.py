@@ -5,9 +5,9 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 from typing import Any
-from collections import defaultdict  # Import defaultdict
+from collections import defaultdict
 
-from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.config_schema import EloConfig, DataPaths
 from tennis_betting_model.utils.common import get_surface
 from tennis_betting_model.utils.logger import log_warning, log_info
 
@@ -17,11 +17,9 @@ class EloCalculator:
     k_factor: int
     rating_diff_factor: int
     initial_rating: int = 1500
-    # --- FIX START: Use defaultdict to handle any surface type, including 'Unknown' ---
     elo_ratings: dict[str, dict[int, float]] = field(
         default_factory=lambda: defaultdict(dict)
     )
-    # --- FIX END ---
 
     def get_player_rating(self, player_id: int, surface: str) -> float:
         """Gets a player's rating for a specific surface. Creates the surface entry if it doesn't exist."""
@@ -42,13 +40,16 @@ class EloCalculator:
         self.elo_ratings[surface][loser_id] = loser_rating - rating_change
 
 
-def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.DataFrame:
+def _calculate_elo_ratings(
+    match_data: pd.DataFrame, elo_config: EloConfig
+) -> pd.DataFrame:
     if not elo_config:
         raise ValueError("Elo configuration ('elo_config') not found in config.yaml")
 
     calculator = EloCalculator(
-        k_factor=elo_config["k_factor"],
-        rating_diff_factor=elo_config["rating_diff_factor"],
+        k_factor=elo_config.k_factor,
+        rating_diff_factor=elo_config.rating_diff_factor,
+        initial_rating=elo_config.initial_rating,
     )
 
     elo_results: list[dict[str, Any]] = []
@@ -76,7 +77,6 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
 
     match_data.drop_duplicates(subset=["match_id"], keep="first", inplace=True)
 
-    # The 'surface' column may now contain 'Unknown', which is handled by the defaultdict
     match_data["surface"] = match_data["tourney_name"].apply(get_surface)
 
     for row in tqdm(
@@ -117,13 +117,9 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
     return pd.DataFrame(elo_results)
 
 
-def main():
-    config = load_config("config.yaml")
-    paths = config["data_paths"]
-    elo_config = config.get("elo_config", {})
-
+def main(data_paths: DataPaths, elo_config: EloConfig):
     log_info("Loading match log data for Elo calculation...")
-    match_log_path = Path(paths["betfair_match_log"])
+    match_log_path = Path(data_paths.betfair_match_log)
     if not match_log_path.exists():
         raise FileNotFoundError(
             f"Match log not found at {match_log_path}. "
@@ -136,7 +132,7 @@ def main():
 
     elo_df = _calculate_elo_ratings(df_matches, elo_config)
 
-    output_path = Path(paths["elo_ratings"])
+    output_path = Path(data_paths.elo_ratings)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if elo_df.empty:

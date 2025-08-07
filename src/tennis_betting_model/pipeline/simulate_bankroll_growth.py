@@ -26,6 +26,7 @@ def simulate_bankroll_growth(
     strategy: str = "kelly",
     stake_unit: float = 10.0,
     kelly_fraction: float = 0.5,
+    max_stake_cap: float = 1.0,
 ) -> pd.DataFrame:
     """
     Simulates bankroll growth over a series of bets with multiple strategies.
@@ -70,6 +71,9 @@ def simulate_bankroll_growth(
             elif strategy == "percent":
                 current_stake = bankroll * (float(stake_unit) / 100.0)
 
+            # Enforce the new max stake cap
+            max_allowed_stake = bankroll * max_stake_cap
+            current_stake = min(current_stake, max_allowed_stake)
             current_stake = max(0.0, min(current_stake, bankroll))
 
             if row_winner == 1:

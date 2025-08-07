@@ -3,25 +3,23 @@ import pandas as pd
 import glob
 import os
 from pathlib import Path
-from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
     log_error,
     setup_logging,
 )
+from tennis_betting_model.utils.config_schema import DataPaths
 
 
-def main():
+def main(paths: DataPaths):
     """
     Finds and consolidates all Betfair summary CSV files (*_ProTennis.csv)
     from the raw data directory into a single file.
     """
     setup_logging()
-    config = load_config("config.yaml")
-    paths = config["data_paths"]
-    raw_data_path = paths["raw_data_dir"]
-    output_path = Path(paths["betfair_raw_odds"])
+    raw_data_path = paths.raw_data_dir
+    output_path = Path(paths.betfair_raw_odds)
 
     log_info(f"Searching for summary files in {raw_data_path}...")
     summary_files = glob.glob(os.path.join(raw_data_path, "*_ProTennis.csv"))
@@ -42,7 +40,6 @@ def main():
         )
         return
 
-    # --- FIX: Convert tourney_date to UTC and handle DD/MM/YYYY format ---
     combined_df["tourney_date"] = pd.to_datetime(
         combined_df["event_date"], errors="coerce", dayfirst=True, utc=True
     )
@@ -56,7 +53,3 @@ def main():
     log_success(
         f"Successfully consolidated {len(combined_df)} records into {output_path}"
     )
-
-
-if __name__ == "__main__":
-    main()

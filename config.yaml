@@ -18,7 +18,7 @@ data_paths:
   model: "models/puntingpro_lgbm_v1.joblib"
   backtest_results: "data/analysis/backtest_results.csv"
   tournament_summary: "data/analysis/tournament_summary.csv"
-  processed_bets_log: "data/processed/processed_bets_log.json"
+  processed_bets_log: "data/processed/processed_bets_log.db"
 
 # -----------------------------------------------------------------------------
 # Feature Engineering Parameters
@@ -26,6 +26,8 @@ data_paths:
 elo_config:
   k_factor: 32
   rating_diff_factor: 400
+  initial_rating: 1555
+  default_player_rank: 500
 
 mapping_params:
   confidence_threshold: 85

@@ -3,11 +3,13 @@
 
 import pandas as pd
 from typing import cast
-from tennis_betting_model.utils.constants import DEFAULT_PLAYER_RANK
 
 
 def get_most_recent_ranking(
-    df_rankings: pd.DataFrame, player_id: int, match_date: pd.Timestamp
+    df_rankings: pd.DataFrame,
+    player_id: int,
+    match_date: pd.Timestamp,
+    default_rank: int,
 ) -> int:
     """
     Finds the most recent ranking for a player prior to a given date.
@@ -24,7 +26,7 @@ def get_most_recent_ranking(
     player_rankings = get_most_recent_ranking.player_rankings_map.get(player_id)  # type: ignore
 
     if player_rankings is None or player_rankings.empty:
-        return DEFAULT_PLAYER_RANK
+        return default_rank
 
     dates = player_rankings["ranking_date"]
     index = dates.searchsorted(match_date, side="right") - 1
@@ -32,7 +34,7 @@ def get_most_recent_ranking(
     if index >= 0:
         return cast(int, player_rankings["rank"].iloc[index])
 
-    return DEFAULT_PLAYER_RANK
+    return default_rank
 
 
 def get_surface(tourney_name: str) -> str:

@@ -19,18 +19,21 @@ class DataPaths(BaseModel):
     model: str
     backtest_results: str
     tournament_summary: str
+    processed_bets_log: str
 
 
 class EloConfig(BaseModel):
     k_factor: int
     rating_diff_factor: int
+    initial_rating: int
+    default_player_rank: int
 
 
 class MappingParams(BaseModel):
     confidence_threshold: int
 
 
-class TrainingParams(BaseModel):  # Renamed from ModelParams
+class TrainingParams(BaseModel):
     hyperparameter_trials: int
     max_training_samples: int | None = None
     early_stopping_rounds: int
@@ -63,6 +66,9 @@ class AnalysisStrategy(BaseModel):
 class AnalysisParams(BaseModel):
     min_bets_for_summary: int
     leaderboard_top_n: int
+    odds_bins: List[float]
+    ev_bins: List[float]
+    rank_bins: List[int]
 
 
 class SimulationParams(BaseModel):
@@ -74,7 +80,7 @@ class Config(BaseModel):
     data_paths: DataPaths
     elo_config: EloConfig
     mapping_params: MappingParams
-    training_params: TrainingParams  # Renamed from model_params
+    training_params: TrainingParams
     live_trading_params: LiveTradingParams
     betting: Betting
     analysis_strategies: List[AnalysisStrategy]

@@ -15,8 +15,8 @@ from ..builders.feature_builder import FeatureBuilder
 from ..pipeline.flumine_strategy import TennisValueStrategy
 from ..pipeline.value_finder import MarketProcessor
 from ..utils.api import login_to_betfair
-from ..utils.config import load_config
-from ..utils.data_loader import load_all_pipeline_data
+from ..utils.config import load_config, Config
+from ..utils.data_loader import DataLoader
 from ..utils.logger import log_error, log_info, log_warning, setup_logging
 
 logger = logging.getLogger(__name__)
@@ -131,24 +131,21 @@ def main(args):
         log_info("LIVE MODE: Starting Real-Time Streaming Service.")
 
     try:
-        config = load_config(args.config)
-        paths = config["data_paths"]
-        betting_config = config["betting"]
-        live_trading_config = config["live_trading_params"]
+        config = Config(**load_config(args.config))
         log_info("Configuration file validation successful.")
     except Exception as e:
         log_error(f"Failed to load configuration: {e}. Exiting.")
         return
 
     try:
-        lightweight_client = login_to_betfair(config)
+        lightweight_client = login_to_betfair(config.dict())
         log_info("Successfully logged in to Betfair.")
     except Exception as e:
         log_error(f"Failed to log in to Betfair: {e}. Exiting.")
         return
 
-    poll_hours_ahead = live_trading_config.get("poll_hours_ahead", 12)
-    stream_limit = live_trading_config.get("stream_limit", 195)
+    poll_hours_ahead = config.live_trading_params.poll_hours_ahead
+    stream_limit = config.live_trading_params.stream_limit
     now = datetime.datetime.utcnow()
     end_time = now + datetime.timedelta(hours=poll_hours_ahead)
     poll_filter = betfairlightweight.filters.market_filter(
@@ -167,17 +164,26 @@ def main(args):
 
     log_info("Loading ML Model and supporting data...")
     try:
-        model = joblib.load(paths["model"])
+        model = joblib.load(config.data_paths.model)
         if model is None:
             log_error("Model file loaded but is empty (None). Cannot proceed.")
             return
-        df_matches, df_rankings, _, df_elo, player_info_lookup = load_all_pipeline_data(
-            paths
-        )
+
+        data_loader = DataLoader(config.data_paths)
+        (
+            df_matches,
+            df_rankings,
+            _,
+            df_elo,
+            player_info_lookup,
+        ) = data_loader.load_all_pipeline_data()
+
         feature_builder = FeatureBuilder(
-            player_info_lookup, df_rankings, df_matches, df_elo
+            player_info_lookup, df_rankings, df_matches, df_elo, config.elo_config
         )
-        market_processor = MarketProcessor(model, feature_builder, betting_config)
+        market_processor = MarketProcessor(
+            model, feature_builder, config.betting.dict()
+        )
     except Exception as e:
         log_error(
             f"Error loading pipeline data or initializing components: {e}. Exiting."
@@ -196,10 +202,10 @@ def main(args):
     strategy = TennisValueStrategy(
         market_filter=initial_strategy_filter,
         market_processor=market_processor,
-        betting_config=betting_config,
-        live_trading_config=live_trading_config,
+        betting_config=config.betting.dict(),
+        live_trading_config=config.live_trading_params.dict(),
         dry_run=args.dry_run,
-        processed_bets_log_path=paths["processed_bets_log"],
+        processed_bets_log_path=config.data_paths.processed_bets_log,
         market_data_filter=streaming_data_filter,
     )
     framework.add_strategy(strategy)

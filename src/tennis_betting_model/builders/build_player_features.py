@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Dict, Any
 from collections import defaultdict, deque
 
-from tennis_betting_model.utils.config import load_config
-from tennis_betting_model.utils.data_loader import load_all_pipeline_data
+from tennis_betting_model.utils.config import load_config, Config
+from tennis_betting_model.utils.data_loader import DataLoader
 from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
@@ -15,7 +15,7 @@ from tennis_betting_model.utils.logger import (
 )
 from tennis_betting_model.utils.common import get_surface, get_most_recent_ranking
 from tennis_betting_model.utils.schema import validate_data
-from tennis_betting_model.utils.constants import ELO_INITIAL_RATING
+from tennis_betting_model.utils.config_schema import EloConfig
 
 
 def _generate_features_chronologically(
@@ -23,6 +23,7 @@ def _generate_features_chronologically(
     df_rankings: pd.DataFrame,
     df_elo_lookup: pd.DataFrame,
     player_info_lookup: dict,
+    elo_config: EloConfig,
 ) -> pd.DataFrame:
     """
     Processes matches chronologically to build point-in-time features.
@@ -64,12 +65,9 @@ def _generate_features_chronologically(
         h2h_key = f"{p1_id}-{p2_id}"
         h2h = h2h_stats[h2h_key]
 
-        # --- FIX START: Make Elo lookup robust to duplicates ---
         try:
             match_elo_data = df_elo_lookup.loc[match_id]
-            # If duplicates exist, .loc returns a DataFrame; otherwise, a Series
             if isinstance(match_elo_data, pd.DataFrame):
-                # If we find duplicates, log it and use the first entry
                 log_warning(
                     f"Duplicate match_id '{match_id}' found in Elo data. Using first entry."
                 )
@@ -80,9 +78,8 @@ def _generate_features_chronologically(
             p1_elo = match_elo["p1_elo"]
             p2_elo = match_elo["p2_elo"]
         except KeyError:
-            p1_elo = ELO_INITIAL_RATING
-            p2_elo = ELO_INITIAL_RATING
-        # --- FIX END ---
+            p1_elo = elo_config.initial_rating
+            p2_elo = elo_config.initial_rating
 
         p1_elo_hist = list(p1_stats["elo_history"])
         p1_elo_momentum = (
@@ -93,9 +90,12 @@ def _generate_features_chronologically(
             p2_elo - (sum(p2_elo_hist) / len(p2_elo_hist)) if p2_elo_hist else 0
         )
 
-        # Other features...
-        p1_rank = get_most_recent_ranking(df_rankings, p1_id, match_date)
-        p2_rank = get_most_recent_ranking(df_rankings, p2_id, match_date)
+        p1_rank = get_most_recent_ranking(
+            df_rankings, p1_id, match_date, elo_config.default_player_rank
+        )
+        p2_rank = get_most_recent_ranking(
+            df_rankings, p2_id, match_date, elo_config.default_player_rank
+        )
         p1_win_perc = (
             p1_stats["wins"] / p1_stats["matches_played"]
             if p1_stats["matches_played"] > 0
@@ -211,13 +211,17 @@ def _generate_features_chronologically(
 def main(args):
     """Main workflow for building all player features using a stateful, chronological approach."""
     setup_logging()
-    config = load_config(args.config)
-    paths = config["data_paths"]
+    config = Config(**load_config(args.config))
+    data_loader = DataLoader(config.data_paths)
 
     try:
-        df_matches, df_rankings, _, df_elo, player_info_lookup = load_all_pipeline_data(
-            paths
-        )
+        (
+            df_matches,
+            df_rankings,
+            _,
+            df_elo,
+            player_info_lookup,
+        ) = data_loader.load_all_pipeline_data()
     except FileNotFoundError:
         return
 
@@ -226,7 +230,7 @@ def main(args):
     df_matches = df_matches.sort_values("tourney_date").reset_index(drop=True)
 
     final_df = _generate_features_chronologically(
-        df_matches, df_rankings, df_elo_lookup, player_info_lookup
+        df_matches, df_rankings, df_elo_lookup, player_info_lookup, config.elo_config
     )
 
     if final_df.empty:
@@ -236,11 +240,11 @@ def main(args):
     elo_cols = ["p1_elo", "p2_elo", "elo_diff"]
     for col in elo_cols:
         final_df[col] = pd.to_numeric(final_df[col], errors="coerce")
-        final_df[col] = final_df[col].fillna(ELO_INITIAL_RATING)
+        final_df[col] = final_df[col].fillna(config.elo_config.initial_rating)
 
     validated_features = validate_data(final_df, "final_features", "Final Feature Set")
 
-    output_path = Path(paths["consolidated_features"])
+    output_path = Path(config.data_paths.consolidated_features)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     log_info(f"Saving FINAL features to {output_path}...")
     validated_features.to_csv(output_path, index=False)

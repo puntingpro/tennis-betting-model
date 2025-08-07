@@ -1,7 +1,7 @@
 # FILE: src/tennis_betting_model/builders/feature_builder.py
 import pandas as pd
 from tennis_betting_model.utils.common import get_most_recent_ranking
-from tennis_betting_model.utils.constants import ELO_INITIAL_RATING
+from tennis_betting_model.utils.config_schema import EloConfig
 
 from tennis_betting_model.builders.feature_logic import (
     get_h2h_stats_optimized,
@@ -23,6 +23,7 @@ class FeatureBuilder:
         df_rankings: pd.DataFrame,
         df_matches: pd.DataFrame,
         df_elo: pd.DataFrame,
+        elo_config: EloConfig,
     ):
         self.player_info_lookup = player_info_lookup
         self.df_rankings = df_rankings
@@ -31,6 +32,7 @@ class FeatureBuilder:
             self.df_matches["tourney_date"], utc=True
         )
         self.df_elo = df_elo.set_index("match_id")
+        self.elo_config = elo_config
 
         self._prepare_data_for_lookup()
 
@@ -69,7 +71,6 @@ class FeatureBuilder:
             axis=1
         )
 
-        # --- FIX: Add .sort_index() to optimize performance and remove the warning ---
         self.h2h_df = h2h_df.set_index(["p1_id", "p2_id"]).sort_index()
 
     def build_features(
@@ -86,16 +87,20 @@ class FeatureBuilder:
         p1_info = self.player_info_lookup.get(p1_id, {})
         p2_info = self.player_info_lookup.get(p2_id, {})
 
-        p1_rank = get_most_recent_ranking(self.df_rankings, p1_id, match_date)
-        p2_rank = get_most_recent_ranking(self.df_rankings, p2_id, match_date)
+        p1_rank = get_most_recent_ranking(
+            self.df_rankings, p1_id, match_date, self.elo_config.default_player_rank
+        )
+        p2_rank = get_most_recent_ranking(
+            self.df_rankings, p2_id, match_date, self.elo_config.default_player_rank
+        )
 
         try:
             match_elo = self.df_elo.loc[match_id]
             p1_elo = match_elo["p1_elo"]
             p2_elo = match_elo["p2_elo"]
         except KeyError:
-            p1_elo = ELO_INITIAL_RATING
-            p2_elo = ELO_INITIAL_RATING
+            p1_elo = self.elo_config.initial_rating
+            p2_elo = self.elo_config.initial_rating
 
         (
             p1_win_perc,

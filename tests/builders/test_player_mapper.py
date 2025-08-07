@@ -2,8 +2,8 @@ import pandas as pd
 import pytest
 from pathlib import Path
 
-# --- FIX: Use the correct, refactored function name ---
 from tennis_betting_model.builders.player_mapper import run_create_mapping_file
+from tennis_betting_model.utils.config_schema import DataPaths, MappingParams
 
 
 @pytest.fixture
@@ -44,11 +44,24 @@ def mock_historical_driven_player_data(tmp_path: Path) -> dict:
     wta_csv_path = wta_dir / "wta_matches_2023.csv"
     df_wta_historical.to_csv(wta_csv_path, index=False)
 
+    # Add all required paths for DataPaths model validation, even if empty
     mock_config = {
         "data_paths": {
             "betfair_raw_odds": str(betfair_csv_path),
             "raw_data_dir": str(tmp_path),
             "player_map": str(tmp_path / "player_mapping.csv"),
+            "processed_data_dir": str(tmp_path / "processed"),
+            "plot_dir": str(tmp_path / "plots"),
+            "raw_players": str(tmp_path / "players.csv"),
+            "consolidated_rankings": str(tmp_path / "rankings.csv"),
+            "betfair_match_log": str(tmp_path / "match_log.csv"),
+            "elo_ratings": str(tmp_path / "elo.csv"),
+            "consolidated_features": str(tmp_path / "features.csv"),
+            "backtest_market_data": str(tmp_path / "backtest_market.csv"),
+            "model": str(tmp_path / "model.joblib"),
+            "backtest_results": str(tmp_path / "results.csv"),
+            "tournament_summary": str(tmp_path / "summary.csv"),
+            "processed_bets_log": str(tmp_path / "bets.db"),
         },
         "mapping_params": {"confidence_threshold": 85},
     }
@@ -62,10 +75,15 @@ def test_create_mapping_file_uses_historical_data_for_tour(
     Tests that the refactored mapper correctly uses historical data to determine
     a player's tour, avoiding cross-gender mapping errors.
     """
-    # --- FIX: Call the correct function name ---
-    run_create_mapping_file(mock_historical_driven_player_data)
+    config = mock_historical_driven_player_data
+    # Instantiate the Pydantic models from the mock config
+    data_paths = DataPaths(**config["data_paths"])
+    mapping_params = MappingParams(**config["mapping_params"])
 
-    output_path = Path(mock_historical_driven_player_data["data_paths"]["player_map"])
+    # Call the function with the correct arguments
+    run_create_mapping_file(data_paths, mapping_params)
+
+    output_path = Path(config["data_paths"]["player_map"])
     assert output_path.exists()
     result_df = pd.read_csv(output_path)
 

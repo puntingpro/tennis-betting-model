@@ -1,22 +1,24 @@
 import pandas as pd
 import streamlit as st
+import numpy as np
 from typing import cast, Tuple, List, Any
 import datetime
 
 from tennis_betting_model.utils.logger import setup_logging
-from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.config import load_config, Config
+from tennis_betting_model.utils.data_loader import DataLoader
+from tennis_betting_model.utils.config_schema import DataPaths
 from tennis_betting_model.pipeline.simulate_bankroll_growth import (
     simulate_bankroll_growth,
     calculate_max_drawdown,
 )
-from tennis_betting_model.utils.data_loader import load_backtest_data_for_dashboard
 
 
 @st.cache_data
-def load_data(paths: dict) -> pd.DataFrame:
+def load_data(_paths: DataPaths) -> pd.DataFrame:
     """Wrapper function to cache the data loading."""
-    # --- FIX: Explicitly cast the return type to satisfy mypy ---
-    return cast(pd.DataFrame, load_backtest_data_for_dashboard(paths))
+    data_loader = DataLoader(_paths)
+    return cast(pd.DataFrame, data_loader.load_backtest_data_for_dashboard())
 
 
 def create_summary_table(
@@ -24,19 +26,25 @@ def create_summary_table(
 ) -> None:
     """Creates and displays a summary table for a given column, bucketing the data."""
     st.subheader(title)
-    if column not in df.columns or df[column].isnull().all():
+    if column not in df.columns or df[column].isnull().all() or df.empty:
         st.warning(f"Data for '{column}' is not available to generate summary.")
         return
 
-    if column == "expected_value" and not df.empty:
-        bins.append(df["expected_value"].max())
+    # Use a robust binning method with infinite boundaries to capture all data
+    bin_edges = sorted(list(set([-np.inf] + bins + [np.inf])))
 
-    df[f"{column}_bucket"] = pd.cut(df[column], bins=bins, right=False)
+    df[f"{column}_bucket"] = pd.cut(df[column], bins=bin_edges)
     summary = (
-        df.groupby(f"{column}_bucket", observed=True)
+        df.groupby(f"{column}_bucket", observed=False)
         .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
         .reset_index()
     )
+    # Remove empty bins before calculating ROI
+    summary = summary[summary["bets"] > 0].copy()
+    if summary.empty:
+        st.warning(f"No data falls into the defined bins for '{column}'.")
+        return
+
     summary["roi"] = (summary["pnl"] / summary["bets"]) * 100
     st.dataframe(
         summary.style.format({"pnl": "{:.2f}", "roi": "{:.2f}%"}),
@@ -55,10 +63,10 @@ def run() -> None:
     )
 
     try:
-        config = load_config("config.yaml")
-        paths = config["data_paths"]
-        analysis_params = config.get("analysis_params", {})
-        df_full = load_data(paths)
+        config_dict = load_config("config.yaml")
+        config = Config(**config_dict)
+        analysis_params = config.analysis_params.dict()
+        df_full = load_data(config.data_paths)
     except Exception as e:
         st.error(f"Failed to load configuration or data. Error: {e}")
         return
@@ -145,14 +153,16 @@ def run() -> None:
             if staking_strategy != "kelly"
             else 10.0
         )
+        max_stake_cap = st.slider("Max Stake Cap (% of Bankroll)", 1, 100, 5, 1)
 
     simulated_df = simulate_bankroll_growth(
         df.copy(),
-        config["simulation_params"],
+        config.simulation_params.dict(),
         initial_bankroll=initial_bankroll,
         strategy=staking_strategy,
         stake_unit=stake_unit,
         kelly_fraction=kelly_fraction,
+        max_stake_cap=(max_stake_cap / 100.0),
     )
 
     with sim_col2:

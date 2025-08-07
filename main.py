@@ -41,42 +41,42 @@ from src.tennis_betting_model.utils.logger import (
     log_info,
     log_success,
 )
-from src.tennis_betting_model.utils.config import load_config
+from src.tennis_betting_model.utils.config import load_config, Config
 
 
 def run_data_preparation_pipeline(args):
     """Orchestrates the initial data consolidation steps."""
     log_info("--- Running Data Preparation Pipeline ---")
-    config = load_config(args.config)
+    config = Config(**load_config(args.config))
     log_info("\nStep 1: Consolidating player attributes...")
-    consolidate_player_attributes(config)
+    consolidate_player_attributes(config.data_paths)
     log_info("\nStep 2: Consolidating player rankings...")
-    consolidate_rankings(config)
+    consolidate_rankings(config.data_paths)
     log_info("\nStep 3: Building RAW odds from Betfair summary files...")
-    build_raw_odds()
+    build_raw_odds(config.data_paths)
     log_success("Data Preparation Finished")
 
 
 def run_player_map_pipeline(args):
     """Runs the standalone player mapping generation."""
     log_info("--- Running Player Mapping ---")
-    config = load_config(args.config)
-    run_create_mapping_file(config)
+    config = Config(**load_config(args.config))
+    run_create_mapping_file(config.data_paths, config.mapping_params)
     log_success("Player Mapping Finished")
 
 
 def run_build_pipeline(args):
     """Orchestrates all data enrichment and feature engineering steps."""
     log_info("--- Running Full Data Build Pipeline ---")
-    config = load_config(args.config)
+    config = Config(**load_config(args.config))
     log_info("\nStep 1: Creating historical match log from Betfair data...")
-    build_match_log(config)
+    build_match_log(config.data_paths)
     log_info("\nStep 2: Calculating surface-specific Elo ratings...")
-    build_elo()
+    build_elo(config.data_paths, config.elo_config)
     log_info("\nStep 3: Building consolidated player features...")
     build_features(args)
     log_info("\nStep 4: Building clean market data for realistic backtesting...")
-    build_backtest_data()
+    build_backtest_data(config.data_paths)
     log_success("Data Build Finished")
 
 

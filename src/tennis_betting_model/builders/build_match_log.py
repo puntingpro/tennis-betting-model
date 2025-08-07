@@ -9,15 +9,16 @@ from src.tennis_betting_model.utils.logger import (
     log_warning,
 )
 from src.tennis_betting_model.utils.common import get_surface
+from src.tennis_betting_model.utils.config_schema import DataPaths
 
 
-def _create_historical_match_lookup(config: dict) -> pd.DataFrame:
+def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
     """
     Loads all historical ATP/WTA match files to create a lookup table for tournament names
     based on the date and players involved. Skips files with incompatible schemas.
     """
     log_info("Creating historical match lookup for tournament names...")
-    raw_data_dir = Path(config["data_paths"]["raw_data_dir"])
+    raw_data_dir = Path(paths.raw_data_dir)
     all_matches = []
 
     use_cols = ["tourney_name", "tourney_date", "winner_id", "loser_id"]
@@ -27,7 +28,6 @@ def _create_historical_match_lookup(config: dict) -> pd.DataFrame:
             os.path.join(raw_data_dir, f"tennis_{tour}", f"{tour}_matches_*.csv")
         )
 
-        # --- FIX START: Loop and handle errors instead of using a single list comprehension ---
         for f in tour_files:
             try:
                 df_tour = pd.read_csv(f, usecols=use_cols, low_memory=False)
@@ -37,7 +37,6 @@ def _create_historical_match_lookup(config: dict) -> pd.DataFrame:
                     log_warning(f"Skipping file with old schema: {Path(f).name}")
                 else:
                     raise e
-        # --- FIX END ---
 
     if not all_matches:
         log_warning(
@@ -61,16 +60,15 @@ def _create_historical_match_lookup(config: dict) -> pd.DataFrame:
     return lookup.drop_duplicates(subset=["date", "p1_id", "p2_id"], keep="last")
 
 
-def main(config: dict):
+def main(paths: DataPaths):
     """
     Creates the historical match log and enriches it with tournament names.
     """
     log_info("--- Creating Match Log from Summary File ---")
-    paths = config["data_paths"]
 
     log_info("Loading consolidated raw odds and player map...")
-    raw_odds_path = Path(paths["betfair_raw_odds"])
-    map_path = Path(paths["player_map"])
+    raw_odds_path = Path(paths.betfair_raw_odds)
+    map_path = Path(paths.player_map)
 
     if not raw_odds_path.exists() or not map_path.exists():
         log_error(
@@ -126,7 +124,7 @@ def main(config: dict):
         inplace=True,
     )
 
-    df_match_lookup = _create_historical_match_lookup(config)
+    df_match_lookup = _create_historical_match_lookup(paths)
     if not df_match_lookup.empty:
         match_log_df["date"] = match_log_df["tourney_date"].dt.date
         match_log_df["p1_id"] = match_log_df[
@@ -153,7 +151,7 @@ def main(config: dict):
 
     if match_log_df.empty:
         log_warning("⚠️ No valid, settled matches found. The match log will be empty.")
-        output_path = Path(paths["betfair_match_log"])
+        output_path = Path(paths.betfair_match_log)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(
             columns=[
@@ -172,7 +170,7 @@ def main(config: dict):
         return
 
     match_log_df.sort_values(by="tourney_date", inplace=True)
-    output_path = Path(paths["betfair_match_log"])
+    output_path = Path(paths.betfair_match_log)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     final_cols = [

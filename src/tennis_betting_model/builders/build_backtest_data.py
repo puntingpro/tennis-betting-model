@@ -8,10 +8,10 @@ from tennis_betting_model.utils.logger import (
     log_warning,
     setup_logging,
 )
-from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.config_schema import DataPaths
 
 
-def main():
+def main(paths: DataPaths):
     """
     Pre-processes the summary data file to create a clean data asset for backtesting.
     """
@@ -19,12 +19,9 @@ def main():
     log_info("--- Building Clean Backtest Market Data from Summary File ---")
 
     try:
-        config = load_config("config.yaml")
-        paths = config["data_paths"]
-
-        raw_odds_path = Path(paths["betfair_raw_odds"])
-        map_path = Path(paths["player_map"])
-        output_path = Path(paths["backtest_market_data"])
+        raw_odds_path = Path(paths.betfair_raw_odds)
+        map_path = Path(paths.player_map)
+        output_path = Path(paths.backtest_market_data)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -34,10 +31,8 @@ def main():
             map_path, dtype={"betfair_id": "int64", "historical_id": "Int64"}
         )
 
-        # --- REFACTOR: Add check for empty input files ---
         if df_raw.empty or df_map.empty:
             log_warning("Raw odds or player map is empty. Cannot build backtest data.")
-            # Save an empty file with headers to prevent downstream errors
             pd.DataFrame(
                 columns=[
                     "market_id",
@@ -56,7 +51,6 @@ def main():
         )
         df_enriched.dropna(subset=["historical_id"], inplace=True)
 
-        # --- REFACTOR: Add check after merging and dropping nulls ---
         if df_enriched.empty:
             log_warning(
                 "No players could be mapped to a historical ID. Cannot build backtest data."
@@ -74,7 +68,6 @@ def main():
             ).to_csv(output_path, index=False)
             return
 
-        # Count runners per market to ensure we only process 2-runner markets
         market_counts = (
             df_enriched.groupby("market_id").size().reset_index(name="runner_count")
         )
@@ -105,7 +98,6 @@ def main():
             df_enriched["market_id"].isin(two_runner_markets["market_id"])
         ].copy()
 
-        # Reshape the data
         p1_df = df.groupby("market_id").first().reset_index()
         p2_df = df.groupby("market_id").last().reset_index()
 
@@ -150,7 +142,3 @@ def main():
         log_error(f"A required data file was not found. Error: {e}")
     except Exception as e:
         log_error(f"An unexpected error occurred: {e}")
-
-
-if __name__ == "__main__":
-    main()

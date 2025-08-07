@@ -10,12 +10,12 @@ from tennis_betting_model.utils.logger import (
     log_error,
 )
 from tennis_betting_model.utils.schema import validate_data
+from tennis_betting_model.utils.config_schema import DataPaths
 
 
-def consolidate_player_attributes(config: dict):
-    paths = config["data_paths"]
-    raw_data_dir = Path(paths["raw_data_dir"])
-    output_path = Path(paths["raw_players"])
+def consolidate_player_attributes(paths: DataPaths):
+    raw_data_dir = Path(paths.raw_data_dir)
+    output_path = Path(paths.raw_players)
     atp_players_path = raw_data_dir / "tennis_atp" / "atp_players.csv"
     wta_players_path = raw_data_dir / "tennis_wta" / "wta_players.csv"
     if not atp_players_path.exists() or not wta_players_path.exists():
@@ -60,10 +60,9 @@ def consolidate_player_attributes(config: dict):
     validate_data(combined_df, "raw_players", "Consolidated Player Attributes")
 
 
-def consolidate_rankings(config: dict):
-    paths = config["data_paths"]
-    raw_data_dir = Path(paths["raw_data_dir"])
-    output_path = Path(paths["consolidated_rankings"])
+def consolidate_rankings(paths: DataPaths):
+    raw_data_dir = Path(paths.raw_data_dir)
+    output_path = Path(paths.consolidated_rankings)
     log_info("Finding all ATP and WTA ranking files...")
     all_files = glob.glob(str(raw_data_dir / "tennis_*" / "*_rankings_*.csv"))
 
@@ -78,7 +77,6 @@ def consolidate_rankings(config: dict):
 
     combined_df = pd.concat(df_list, ignore_index=True)
 
-    # --- FIX: Cast column lists to a pd.Index to resolve mypy error ---
     if combined_df.shape[1] == 4:
         combined_df.columns = pd.Index(["ranking_date", "rank", "player", "points"])
     elif combined_df.shape[1] == 5:

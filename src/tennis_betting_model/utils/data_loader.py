@@ -6,167 +6,151 @@ from typing import Tuple, Dict, Any, cast
 import glob
 import os
 from pathlib import Path
+from functools import lru_cache
+from .config_schema import DataPaths
 
 
-def load_historical_player_data(raw_data_dir: Path) -> pd.DataFrame:
-    """Loads and consolidates all unique historical player names and IDs from raw data files."""
-    all_players = []
-    for tour in ["atp", "wta"]:
-        tour_files = glob.glob(
-            os.path.join(raw_data_dir, f"tennis_{tour}", f"{tour}_matches_*.csv")
-        )
-        if not tour_files:
-            continue
+class DataLoader:
+    def __init__(self, paths: DataPaths):
+        self.paths = paths
 
-        df_tour = pd.concat(
-            [pd.read_csv(f, low_memory=False) for f in tour_files], ignore_index=True
-        )
+    @lru_cache(maxsize=None)
+    def load_historical_player_data(self) -> pd.DataFrame:
+        """Loads and consolidates all unique historical player names and IDs from raw data files."""
+        raw_data_dir = Path(self.paths.raw_data_dir)
+        all_players = []
+        for tour in ["atp", "wta"]:
+            tour_files = glob.glob(
+                os.path.join(raw_data_dir, f"tennis_{tour}", f"{tour}_matches_*.csv")
+            )
+            if not tour_files:
+                continue
 
-        winners = df_tour[["winner_id", "winner_name"]].rename(
-            columns={"winner_id": "historical_id", "winner_name": "historical_name"}
-        )
-        losers = df_tour[["loser_id", "loser_name"]].rename(
-            columns={"loser_id": "historical_id", "loser_name": "historical_name"}
-        )
-        all_players.append(pd.concat([winners, losers]))
-
-    if not all_players:
-        return pd.DataFrame(columns=["historical_id", "historical_name"])
-
-    df_historical = pd.concat(all_players).drop_duplicates().dropna()
-    return df_historical
-
-
-def load_all_pipeline_data(
-    paths: dict,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[int, Any]]:
-    """
-    Loads, prepares, and validates all necessary data sources for the pipeline.
-    This is the single source of truth for data loading.
-    """
-    log_info("--- Loading All Pipeline Data Sources ---")
-    try:
-        # Load match data
-        df_matches = pd.read_csv(paths["betfair_match_log"], low_memory=False)
-        df_matches["tourney_date"] = pd.to_datetime(
-            df_matches["tourney_date"], errors="coerce", utc=True
-        )
-        df_matches["winner_historical_id"] = pd.to_numeric(
-            df_matches["winner_historical_id"], errors="coerce"
-        )
-        df_matches["loser_historical_id"] = pd.to_numeric(
-            df_matches["loser_historical_id"], errors="coerce"
-        )
-        df_matches.dropna(
-            subset=["tourney_date", "winner_historical_id", "loser_historical_id"],
-            inplace=True,
-        )
-        df_matches["winner_historical_id"] = df_matches["winner_historical_id"].astype(
-            int
-        )
-        df_matches["loser_historical_id"] = df_matches["loser_historical_id"].astype(
-            int
-        )
-        df_matches["match_id"] = df_matches["match_id"].astype(str)
-        df_matches = validate_data(df_matches, "betfair_match_log", "Betfair Match Log")
-
-        # Load player data
-        df_players = pd.read_csv(paths["raw_players"], encoding="latin-1")
-        df_players["player_id"] = pd.to_numeric(
-            df_players["player_id"], errors="coerce"
-        )
-        df_players.dropna(subset=["player_id"], inplace=True)
-        df_players["player_id"] = df_players["player_id"].astype(int)
-        df_players = df_players.drop_duplicates(subset=["player_id"], keep="first")
-        player_info_lookup = df_players.set_index("player_id").to_dict("index")
-        validate_data(df_players, "raw_players", "Raw Player Attributes")
-
-        # Load rankings data
-        df_rankings = pd.read_csv(paths["consolidated_rankings"])
-        df_rankings["ranking_date"] = pd.to_datetime(
-            df_rankings["ranking_date"], utc=True
-        )
-        df_rankings = df_rankings.sort_values(by="ranking_date")
-        validate_data(df_rankings, "consolidated_rankings", "Consolidated Rankings")
-
-        # Load Elo ratings data
-        df_elo = pd.read_csv(paths["elo_ratings"])
-        df_elo["match_id"] = df_elo["match_id"].astype(str)
-
-        log_success("✅ All data loaded and validated successfully.")
-        return (
-            df_matches,
-            df_rankings,
-            df_players,
-            df_elo,
-            cast(Dict[int, Any], player_info_lookup),
-        )
-
-    except FileNotFoundError as e:
-        log_error(f"A required data file was not found. Error: {e}")
-        raise
-    except Exception as e:
-        log_error(f"An unexpected error occurred during data loading: {e}")
-        raise
-
-
-def load_backtest_data_for_dashboard(paths: dict) -> pd.DataFrame:
-    """Loads and prepares the backtest results data specifically for the dashboard."""
-    try:
-        results_path = Path(paths["backtest_results"])
-        df = pd.read_csv(results_path)
-        df["tourney_date"] = pd.to_datetime(df["tourney_date"])
-
-        if "pnl" not in df.columns:
-            df["pnl"] = df.apply(
-                lambda row: (row["odds"] - 1) * 0.95 if row["winner"] == 1 else -1,
-                axis=1,
+            df_tour = pd.concat(
+                [pd.read_csv(f, low_memory=False) for f in tour_files],
+                ignore_index=True,
             )
 
-        features_path = Path(paths["consolidated_features"])
-        if features_path.exists():
-            df_features = pd.read_csv(features_path, usecols=["market_id", "rank_diff"])
-            df["market_id"] = df["market_id"].astype(str)
-            df_features["market_id"] = df_features["market_id"].astype(str)
-            df = pd.merge(df, df_features, on="market_id", how="left")
-        else:
-            df["rank_diff"] = 0
+            winners = df_tour[["winner_id", "winner_name"]].rename(
+                columns={"winner_id": "historical_id", "winner_name": "historical_name"}
+            )
+            losers = df_tour[["loser_id", "loser_name"]].rename(
+                columns={"loser_id": "historical_id", "loser_name": "historical_name"}
+            )
+            all_players.append(pd.concat([winners, losers]))
 
-        return df.sort_values("tourney_date")
-    except FileNotFoundError:
-        log_error(
-            f"Backtest results not found at {paths['backtest_results']}. Please run a backtest first."
-        )
-        return pd.DataFrame()
-    except Exception as e:
-        log_error(f"An error occurred loading backtest data: {e}")
-        return pd.DataFrame()
+        if not all_players:
+            return pd.DataFrame(columns=["historical_id", "historical_name"])
 
+        df_historical = pd.concat(all_players).drop_duplicates().dropna()
+        return df_historical
 
-def load_features_for_backtest(paths: dict) -> pd.DataFrame:
-    """Loads and prepares the consolidated features for backtesting."""
-    log_info(f"Loading historical features from {paths['consolidated_features']}...")
-    df = pd.read_csv(paths["consolidated_features"], parse_dates=["tourney_date"])
-    df.rename(
-        columns={"winner_historical_id": "p1_id", "loser_historical_id": "p2_id"},
-        inplace=True,
-    )
-    df.rename(
-        columns=lambda c: c.replace("[", "").replace("]", "").replace("<", ""),
-        inplace=True,
-    )
-    return df
+    @lru_cache(maxsize=None)
+    def load_all_pipeline_data(
+        self,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[int, Any]]:
+        """
+        Loads, prepares, and validates all necessary data sources for the pipeline.
+        This is the single source of truth for data loading.
+        """
+        log_info("--- Loading All Pipeline Data Sources ---")
+        try:
+            # Load match data
+            df_matches = pd.read_csv(self.paths.betfair_match_log, low_memory=False)
+            df_matches["tourney_date"] = pd.to_datetime(
+                df_matches["tourney_date"], errors="coerce", utc=True
+            )
+            df_matches["winner_historical_id"] = pd.to_numeric(
+                df_matches["winner_historical_id"], errors="coerce"
+            )
+            df_matches["loser_historical_id"] = pd.to_numeric(
+                df_matches["loser_historical_id"], errors="coerce"
+            )
+            df_matches.dropna(
+                subset=["tourney_date", "winner_historical_id", "loser_historical_id"],
+                inplace=True,
+            )
+            df_matches["winner_historical_id"] = df_matches[
+                "winner_historical_id"
+            ].astype(int)
+            df_matches["loser_historical_id"] = df_matches[
+                "loser_historical_id"
+            ].astype(int)
+            df_matches["match_id"] = df_matches["match_id"].astype(str)
+            df_matches = validate_data(
+                df_matches, "betfair_match_log", "Betfair Match Log"
+            )
 
+            # Load player data
+            df_players = pd.read_csv(self.paths.raw_players, encoding="latin-1")
+            df_players["player_id"] = pd.to_numeric(
+                df_players["player_id"], errors="coerce"
+            )
+            df_players.dropna(subset=["player_id"], inplace=True)
+            df_players["player_id"] = df_players["player_id"].astype(int)
+            df_players = df_players.drop_duplicates(subset=["player_id"], keep="first")
+            player_info_lookup = df_players.set_index("player_id").to_dict("index")
+            validate_data(df_players, "raw_players", "Raw Player Attributes")
 
-def load_market_data_for_backtest(paths: dict) -> pd.DataFrame:
-    """Loads the clean market data for realistic backtesting."""
-    log_info(
-        f"Loading clean backtest market data from {paths['backtest_market_data']}..."
-    )
-    try:
-        return pd.read_csv(paths["backtest_market_data"], parse_dates=["tourney_date"])
-    except FileNotFoundError:
-        log_error(
-            "Required file not found. Please run the 'build' command to create backtest market data."
-        )
-        return pd.DataFrame()
+            # Load rankings data
+            df_rankings = pd.read_csv(self.paths.consolidated_rankings)
+            df_rankings["ranking_date"] = pd.to_datetime(
+                df_rankings["ranking_date"], utc=True
+            )
+            df_rankings = df_rankings.sort_values(by="ranking_date")
+            validate_data(df_rankings, "consolidated_rankings", "Consolidated Rankings")
+
+            # Load Elo ratings data
+            df_elo = pd.read_csv(self.paths.elo_ratings)
+            df_elo["match_id"] = df_elo["match_id"].astype(str)
+
+            log_success("✅ All data loaded and validated successfully.")
+            return (
+                df_matches,
+                df_rankings,
+                df_players,
+                df_elo,
+                cast(Dict[int, Any], player_info_lookup),
+            )
+
+        except FileNotFoundError as e:
+            log_error(f"A required data file was not found. Error: {e}")
+            raise
+        except Exception as e:
+            log_error(f"An unexpected error occurred during data loading: {e}")
+            raise
+
+    @lru_cache(maxsize=None)
+    def load_backtest_data_for_dashboard(self) -> pd.DataFrame:
+        """Loads and prepares the backtest results data specifically for the dashboard."""
+        try:
+            results_path = Path(self.paths.backtest_results)
+            df = pd.read_csv(results_path)
+            df["tourney_date"] = pd.to_datetime(df["tourney_date"])
+
+            if "pnl" not in df.columns:
+                df["pnl"] = df.apply(
+                    lambda row: (row["odds"] - 1) * 0.95 if row["winner"] == 1 else -1,
+                    axis=1,
+                )
+
+            features_path = Path(self.paths.consolidated_features)
+            if features_path.exists():
+                df_features = pd.read_csv(
+                    features_path, usecols=["market_id", "rank_diff"]
+                )
+                df["market_id"] = df["market_id"].astype(str)
+                df_features["market_id"] = df_features["market_id"].astype(str)
+                df = pd.merge(df, df_features, on="market_id", how="left")
+            else:
+                df["rank_diff"] = 0
+
+            return df.sort_values("tourney_date")
+        except FileNotFoundError:
+            log_error(
+                f"Backtest results not found at {self.paths.backtest_results}. Please run a backtest first."
+            )
+            return pd.DataFrame()
+        except Exception as e:
+            log_error(f"An error occurred loading backtest data: {e}")
+            return pd.DataFrame()

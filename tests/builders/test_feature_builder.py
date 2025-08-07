@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 from tennis_betting_model.builders.feature_builder import FeatureBuilder
+from tennis_betting_model.utils.config_schema import EloConfig
 
 
 @pytest.fixture
@@ -37,7 +38,14 @@ def mock_builder_data():
         }
     )
 
-    return player_info, df_rankings, df_matches, df_elo
+    elo_config = EloConfig(
+        k_factor=32,
+        rating_diff_factor=400,
+        initial_rating=1500,
+        default_player_rank=500,
+    )
+
+    return player_info, df_rankings, df_matches, df_elo, elo_config
 
 
 def test_feature_builder_builds_correct_features(mock_builder_data):
@@ -45,13 +53,14 @@ def test_feature_builder_builds_correct_features(mock_builder_data):
     Tests that the unified FeatureBuilder correctly calculates and assembles a
     complete feature dictionary for a given match.
     """
-    player_info, df_rankings, df_matches, df_elo = mock_builder_data
+    player_info, df_rankings, df_matches, df_elo, elo_config = mock_builder_data
 
     builder = FeatureBuilder(
         player_info_lookup=player_info,
         df_rankings=df_rankings,
         df_matches=df_matches,
         df_elo=df_elo,
+        elo_config=elo_config,
     )
 
     features = builder.build_features(
