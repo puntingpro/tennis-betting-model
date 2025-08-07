@@ -20,6 +20,6 @@ def test_add_ev_and_kelly():
     assert pytest.approx(df_processed.loc[1, "expected_value"]) == 0.2
     assert pytest.approx(df_processed.loc[1, "kelly_fraction"]) == 0.04
 
-    # Row 3: EV = (0.8 * 0.2) - 0.2 = -0.04. Kelly = -0.04 / 0.2 = -0.2
+    # Row 3: EV = (0.8 * 0.2) - 0.2 = -0.04. Kelly is clipped to 0.
     assert pytest.approx(df_processed.loc[2, "expected_value"]) == -0.04
-    assert pytest.approx(df_processed.loc[2, "kelly_fraction"]) == -0.2
+    assert pytest.approx(df_processed.loc[2, "kelly_fraction"]) == 0.0

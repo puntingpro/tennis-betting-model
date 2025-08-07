@@ -1,3 +1,5 @@
+# src/tennis_betting_model/builders/feature_logic.py
+
 import pandas as pd
 from typing import cast
 
@@ -61,7 +63,9 @@ def get_player_stats_optimized(
     except KeyError:
         return 0.0, 0.0, 0.0, 0, 0
 
-    player_matches = all_player_matches[all_player_matches["tourney_date"] < match_date]
+    player_matches = all_player_matches[
+        pd.to_datetime(all_player_matches["tourney_date"]) < match_date
+    ]
 
     if player_matches.empty:
         return 0.0, 0.0, 0.0, 0, 0
@@ -76,8 +80,7 @@ def get_player_stats_optimized(
     last_10 = player_matches.tail(10)
     form_last_10 = float(last_10["won"].mean()) if not last_10.empty else 0.0
 
-    # --- FIX: Add 'type: ignore' to suppress the pandas-specific mypy error ---
-    time_since_matches = match_date - player_matches["tourney_date"]  # type: ignore[operator]
+    time_since_matches = match_date - pd.to_datetime(player_matches["tourney_date"])
 
     matches_last_14_days = (time_since_matches.dt.days <= 14).sum()
     matches_last_7_days = (time_since_matches.dt.days <= 7).sum()

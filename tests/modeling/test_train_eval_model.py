@@ -26,7 +26,7 @@ def sample_feature_data() -> pd.DataFrame:
     df["rank_diff"] = df["p1_rank"] - df["p2_rank"]
     df["winner"] = np.where(df["rank_diff"] < 0, 1, 0)
 
-    df["match_id"] = range(len(df))
+    df["market_id"] = range(len(df))
     df["p1_id"] = [101, 102] * (len(df) // 2)
     df["p2_id"] = [102, 101] * (len(df) // 2)
     df["tourney_date"] = pd.to_datetime("2023-01-01")
@@ -42,13 +42,13 @@ def test_train_eval_model_outputs_correct_types(tmp_path, sample_feature_data):
     that the model file is created.
     """
     model_path = tmp_path / "test_model.joblib"
+    training_params = {"hyperparameter_trials": 2, "early_stopping_rounds": 10}
 
-    # FIX: Add the required 'plot_dir' argument
     train_eval_model(
         data=sample_feature_data,
         model_output_path=str(model_path),
         plot_dir=str(tmp_path),
-        n_trials=2,
+        training_params=training_params,
     )
 
     assert model_path.exists()
@@ -61,15 +61,15 @@ def test_train_eval_model_logic_is_sound(tmp_path, sample_feature_data):
     Tests the model training logic to ensure it produces a sensible model.
     """
     model_path = tmp_path / "test_model_logic.joblib"
+    training_params = {"hyperparameter_trials": 5, "early_stopping_rounds": 10}
 
     optuna.logging.set_verbosity(optuna.logging.CRITICAL)
 
-    # FIX: Add the required 'plot_dir' argument
     train_eval_model(
         data=sample_feature_data,
         model_output_path=str(model_path),
         plot_dir=str(tmp_path),
-        n_trials=5,
+        training_params=training_params,
         test_size=0.5,
     )
 
