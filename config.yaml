@@ -26,7 +26,7 @@ data_paths:
 elo_config:
   k_factor: 32
   rating_diff_factor: 400
-  initial_rating: 1555
+  initial_rating: 1500
   default_player_rank: 500
 
 mapping_params:

@@ -1,14 +1,15 @@
 # src/tennis_betting_model/builders/feature_logic.py
 
 import pandas as pd
-from typing import cast
+from typing import cast, Tuple
 
 
 def get_h2h_stats_optimized(
-    h2h_df: pd.DataFrame, p1_id: int, p2_id: int, match_date: pd.Timestamp
+    h2h_df: pd.DataFrame, p1_id: int, p2_id: int, match_date: pd.Timestamp, surface: str
 ) -> tuple[int, int]:
     """
-    Calculates point-in-time Head-to-Head (H2H) stats using a pre-indexed DataFrame.
+    Calculates point-in-time, surface-specific Head-to-Head (H2H) stats
+    using a pre-indexed DataFrame.
     """
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
@@ -28,7 +29,10 @@ def get_h2h_stats_optimized(
     except KeyError:
         return 0, 0
 
-    past_matches = h2h_matches[h2h_matches["tourney_date"] < match_date]
+    # --- ENHANCEMENT: Filter by both date and surface ---
+    past_matches = h2h_matches[
+        (h2h_matches["tourney_date"] < match_date) & (h2h_matches["surface"] == surface)
+    ]
 
     if past_matches.empty:
         return 0, 0
@@ -44,9 +48,10 @@ def get_player_stats_optimized(
     player_id: int,
     surface: str,
     match_date: pd.Timestamp,
-) -> tuple[float, float, float, int, int]:
+) -> Tuple[float, float, float, int, int, int, int]:
     """
     Calculates point-in-time stats for a player using a pre-indexed, player-centric DataFrame.
+    Now includes sets played for fatigue calculation.
     """
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
@@ -61,14 +66,14 @@ def get_player_stats_optimized(
             all_player_matches = cast(pd.DataFrame, player_matches_lookup)
 
     except KeyError:
-        return 0.0, 0.0, 0.0, 0, 0
+        return 0.0, 0.0, 0.0, 0, 0, 0, 0
 
     player_matches = all_player_matches[
         pd.to_datetime(all_player_matches["tourney_date"]) < match_date
     ]
 
     if player_matches.empty:
-        return 0.0, 0.0, 0.0, 0, 0
+        return 0.0, 0.0, 0.0, 0, 0, 0, 0
 
     win_perc = float(player_matches["won"].mean())
 
@@ -82,8 +87,13 @@ def get_player_stats_optimized(
 
     time_since_matches = match_date - pd.to_datetime(player_matches["tourney_date"])
 
-    matches_last_14_days = (time_since_matches.dt.days <= 14).sum()
-    matches_last_7_days = (time_since_matches.dt.days <= 7).sum()
+    recent_matches_14_days = player_matches[time_since_matches.dt.days <= 14]
+    recent_matches_7_days = player_matches[time_since_matches.dt.days <= 7]
+
+    matches_last_14_days = len(recent_matches_14_days)
+    matches_last_7_days = len(recent_matches_7_days)
+    sets_played_last_14_days = recent_matches_14_days["sets_played"].sum()
+    sets_played_last_7_days = recent_matches_7_days["sets_played"].sum()
 
     return (
         win_perc,
@@ -91,4 +101,6 @@ def get_player_stats_optimized(
         form_last_10,
         int(matches_last_7_days),
         int(matches_last_14_days),
+        int(sets_played_last_7_days),
+        int(sets_played_last_14_days),
     )

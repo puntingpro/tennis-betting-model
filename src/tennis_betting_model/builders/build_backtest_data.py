@@ -13,7 +13,8 @@ from tennis_betting_model.utils.config_schema import DataPaths
 
 def main(paths: DataPaths):
     """
-    Pre-processes the summary data file to create a clean data asset for backtesting.
+    Pre-processes the summary data file to create a clean data asset for backtesting,
+    now including implied probability and bookmaker's margin.
     """
     setup_logging()
     log_info("--- Building Clean Backtest Market Data from Summary File ---")
@@ -42,6 +43,9 @@ def main(paths: DataPaths):
                     "p1_odds",
                     "p2_odds",
                     "winner",
+                    "p1_implied_prob",
+                    "p2_implied_prob",
+                    "book_margin",
                 ]
             ).to_csv(output_path, index=False)
             return
@@ -64,6 +68,9 @@ def main(paths: DataPaths):
                     "p1_odds",
                     "p2_odds",
                     "winner",
+                    "p1_implied_prob",
+                    "p2_implied_prob",
+                    "book_margin",
                 ]
             ).to_csv(output_path, index=False)
             return
@@ -86,6 +93,9 @@ def main(paths: DataPaths):
                     "p1_odds",
                     "p2_odds",
                     "winner",
+                    "p1_implied_prob",
+                    "p2_implied_prob",
+                    "book_margin",
                 ]
             ).to_csv(output_path, index=False)
             return
@@ -118,6 +128,13 @@ def main(paths: DataPaths):
             inplace=True,
         )
 
+        # --- ENHANCEMENT: Calculate implied probability and market overround ---
+        market_data["p1_implied_prob"] = 1 / market_data["p1_odds"]
+        market_data["p2_implied_prob"] = 1 / market_data["p2_odds"]
+        market_data["book_margin"] = (
+            market_data["p1_implied_prob"] + market_data["p2_implied_prob"]
+        ) - 1
+
         market_data["winner"] = (market_data["result"] == "WINNER").astype(int)
 
         final_cols = [
@@ -128,6 +145,9 @@ def main(paths: DataPaths):
             "p1_odds",
             "p2_odds",
             "winner",
+            "p1_implied_prob",
+            "p2_implied_prob",
+            "book_margin",
         ]
         final_market_data = market_data[final_cols].copy()
         final_market_data["p1_id"] = final_market_data["p1_id"].astype("Int64")

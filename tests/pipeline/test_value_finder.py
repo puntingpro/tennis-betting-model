@@ -1,9 +1,11 @@
+# tests/pipeline/test_value_finder.py
 import pandas as pd
 import pytest
 from unittest.mock import MagicMock
 
 from tennis_betting_model.pipeline.value_finder import MarketProcessor
 from tennis_betting_model.builders.feature_builder import FeatureBuilder
+from tennis_betting_model.utils.config_schema import Betting
 
 
 @pytest.fixture
@@ -28,9 +30,18 @@ def mock_dependencies():
         "p2_hand_R": 0,
     }
 
-    mock_betting_config = {"ev_threshold": 0.1}
+    # Use the Pydantic model for the betting config
+    betting_config = Betting(
+        ev_threshold=0.1,
+        confidence_threshold=0.5,
+        betfair_commission=0.05,
+        live_bankroll=1000.0,
+        live_kelly_fraction=0.1,
+        max_kelly_stake_fraction=0.05,
+        profitable_tournaments=[],
+    )
 
-    return mock_model, mock_feature_builder, mock_betting_config
+    return mock_model, mock_feature_builder, betting_config
 
 
 @pytest.fixture
@@ -50,12 +61,10 @@ def mock_market_data():
     mock_book = MagicMock()
     p1_runner_book = MagicMock()
     p1_runner_book.selection_id = 101
-    # FIX: Use a list of dicts to correctly mock the price data structure
-    p1_runner_book.ex.available_to_back = [{"price": 2.0, "size": 100}]  # Value bet
+    p1_runner_book.ex.available_to_back = [{"price": 2.0, "size": 100}]
     p2_runner_book = MagicMock()
     p2_runner_book.selection_id = 102
-    # FIX: Use a list of dicts to correctly mock the price data structure
-    p2_runner_book.ex.available_to_back = [{"price": 1.8, "size": 100}]  # Not value
+    p2_runner_book.ex.available_to_back = [{"price": 1.8, "size": 100}]
     mock_book.runners = [p1_runner_book, p2_runner_book]
 
     return mock_market, mock_book
@@ -69,6 +78,7 @@ def test_market_processor_identifies_value(mock_dependencies, mock_market_data):
     model, feature_builder, config = mock_dependencies
     market_cat, market_book = mock_market_data
 
+    # Pass dependencies during instantiation
     processor = MarketProcessor(model, feature_builder, config)
     result = processor.process_market(market_cat, market_book)
 
@@ -89,9 +99,9 @@ def test_market_processor_ignores_no_value(mock_dependencies, mock_market_data):
     model, feature_builder, config = mock_dependencies
     market_cat, market_book = mock_market_data
 
-    # Modify model prediction so there is no value
-    model.predict_proba.return_value = [[0.6, 0.4]]  # P1 has 40% chance
+    model.predict_proba.return_value = [[0.6, 0.4]]
 
+    # Pass dependencies during instantiation
     processor = MarketProcessor(model, feature_builder, config)
     result = processor.process_market(market_cat, market_book)
 

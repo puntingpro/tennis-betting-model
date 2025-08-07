@@ -1,3 +1,5 @@
+# src/tennis_betting_model/utils/logger.py
+
 import logging
 import sys
 
@@ -23,8 +25,9 @@ def log_warning(msg: str) -> None:
     logging.warning(f"WARNING: {msg}")
 
 
-def log_error(msg: str) -> None:
-    logging.error(f"ERROR: {msg}")
+def log_error(msg: str, exc_info: bool = False) -> None:
+    """Logs an error message, optionally including exception info."""
+    logging.error(f"ERROR: {msg}", exc_info=exc_info)
 
 
 def log_success(msg: str) -> None:

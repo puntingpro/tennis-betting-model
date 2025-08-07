@@ -1,8 +1,10 @@
+# src/tennis_betting_model/utils/config.py
 from pathlib import Path
 from typing import Any, Dict
 import yaml
 from pydantic import ValidationError
 import os
+from functools import lru_cache
 
 from .logger import log_error, log_info
 from .config_schema import Config
@@ -18,10 +20,12 @@ def _merge_configs(base: dict, override: dict) -> dict:
     return base
 
 
+@lru_cache(maxsize=None)
 def load_config(config_path: str) -> Dict[str, Any]:
     """
     Loads a base YAML configuration and merges an environment-specific
     override file if it exists, determined by the APP_ENV variable.
+    The result is cached to avoid repeated file I/O.
     """
     p = Path(config_path)
     if not p.exists():
@@ -31,7 +35,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
         config_dict = dict(yaml.safe_load(f))
 
     # Check for an environment-specific config override file
-    # e.g., if APP_ENV=prod, it looks for config.prod.yaml
     env = os.getenv("APP_ENV", "dev")
     env_config_path = p.parent / f"{p.stem}.{env}.yaml"
 

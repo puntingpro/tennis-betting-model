@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-from typing import Any
+from typing import Any, cast
 from collections import defaultdict
 
 from tennis_betting_model.utils.config_schema import EloConfig, DataPaths
@@ -84,11 +84,11 @@ def _calculate_elo_ratings(
         total=len(match_data),
         desc="Calculating Surface-Specific Elo",
     ):
-        winner_id, loser_id, surface = (
-            row.winner_historical_id,
-            row.loser_historical_id,
-            row.surface,
-        )
+        # --- FIX START: Explicitly cast types to satisfy mypy ---
+        winner_id = cast(int, row.winner_historical_id)
+        loser_id = cast(int, row.loser_historical_id)
+        surface = str(row.surface)
+        # --- FIX END ---
 
         winner_pre_match_elo = calculator.get_player_rating(winner_id, surface)
         loser_pre_match_elo = calculator.get_player_rating(loser_id, surface)

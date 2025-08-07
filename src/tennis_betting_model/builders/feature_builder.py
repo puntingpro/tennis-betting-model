@@ -80,6 +80,8 @@ class FeatureBuilder:
         surface: str,
         match_date: pd.Timestamp,
         match_id: str,
+        p1_odds: float = 0.0,
+        p2_odds: float = 0.0,
     ) -> dict:
         """
         Constructs a feature dictionary for a single match.
@@ -108,6 +110,8 @@ class FeatureBuilder:
             p1_form,
             p1_matches_last_7,
             p1_matches_last_14,
+            p1_sets_last_7,
+            p1_sets_last_14,
         ) = get_player_stats_optimized(self.player_match_df, p1_id, surface, match_date)
         (
             p2_win_perc,
@@ -115,10 +119,20 @@ class FeatureBuilder:
             p2_form,
             p2_matches_last_7,
             p2_matches_last_14,
+            p2_sets_last_7,
+            p2_sets_last_14,
         ) = get_player_stats_optimized(self.player_match_df, p2_id, surface, match_date)
 
         h2h_p1_wins, h2h_p2_wins = get_h2h_stats_optimized(
-            self.h2h_df, p1_id, p2_id, match_date
+            self.h2h_df, p1_id, p2_id, match_date, surface
+        )
+
+        p1_implied_prob = 1 / p1_odds if p1_odds > 0 else 0
+        p2_implied_prob = 1 / p2_odds if p2_odds > 0 else 0
+        book_margin = (
+            (p1_implied_prob + p2_implied_prob) - 1
+            if p1_odds > 0 and p2_odds > 0
+            else 0
         )
 
         feature_dict = {
@@ -135,14 +149,26 @@ class FeatureBuilder:
             "p2_win_perc": p2_win_perc,
             "p1_surface_win_perc": p1_surface_win_perc,
             "p2_surface_win_perc": p2_surface_win_perc,
+            # --- FIX: Add p1_form and p2_form back to the dictionary ---
+            "p1_form": p1_form,
+            "p2_form": p2_form,
             "p1_matches_last_7_days": p1_matches_last_7,
             "p2_matches_last_7_days": p2_matches_last_7,
             "p1_matches_last_14_days": p1_matches_last_14,
             "p2_matches_last_14_days": p2_matches_last_14,
             "fatigue_diff_7_days": p1_matches_last_7 - p2_matches_last_7,
             "fatigue_diff_14_days": p1_matches_last_14 - p2_matches_last_14,
-            "h2h_p1_wins": h2h_p1_wins,
-            "h2h_p2_wins": h2h_p2_wins,
+            "p1_sets_played_last_7_days": p1_sets_last_7,
+            "p2_sets_played_last_7_days": p2_sets_last_7,
+            "p1_sets_played_last_14_days": p1_sets_last_14,
+            "p2_sets_played_last_14_days": p2_sets_last_14,
+            "fatigue_sets_diff_7_days": p1_sets_last_7 - p2_sets_last_7,
+            "fatigue_sets_diff_14_days": p1_sets_last_14 - p2_sets_last_14,
+            "h2h_surface_p1_wins": h2h_p1_wins,
+            "h2h_surface_p2_wins": h2h_p2_wins,
+            "p1_implied_prob": p1_implied_prob,
+            "p2_implied_prob": p2_implied_prob,
+            "book_margin": book_margin,
             "p1_hand": p1_info.get("hand", "U"),
             "p2_hand": p2_info.get("hand", "U"),
         }

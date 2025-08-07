@@ -29,7 +29,8 @@ install_deps = [
     "ruff",
     "pre-commit",
     "google-cloud-storage",
-    "lightgbm",  # --- FIX: Add missing lightgbm dependency ---
+    "lightgbm",
+    "typer[all]",  # --- FIX: Add typer with rich support ---
 ]
 
 setup(

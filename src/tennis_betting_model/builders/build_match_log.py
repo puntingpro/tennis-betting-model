@@ -1,15 +1,17 @@
+# src/tennis_betting_model/builders/build_match_log.py
 import pandas as pd
 from pathlib import Path
 import glob
 import os
-from src.tennis_betting_model.utils.logger import (
+from tennis_betting_model.utils.logger import (
     log_info,
     log_success,
     log_error,
     log_warning,
 )
-from src.tennis_betting_model.utils.common import get_surface
-from src.tennis_betting_model.utils.config_schema import DataPaths
+from tennis_betting_model.utils.common import get_surface
+from tennis_betting_model.utils.config_schema import DataPaths
+from tennis_betting_model.utils.schema import validate_data
 
 
 def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
@@ -21,7 +23,8 @@ def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
     raw_data_dir = Path(paths.raw_data_dir)
     all_matches = []
 
-    use_cols = ["tourney_name", "tourney_date", "winner_id", "loser_id"]
+    # --- ENHANCEMENT: Add 'score' to the columns being loaded ---
+    use_cols = ["tourney_name", "tourney_date", "winner_id", "loser_id", "score"]
 
     for tour in ["atp", "wta"]:
         tour_files = glob.glob(
@@ -54,7 +57,8 @@ def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
     df_historical["p1_id"] = df_historical[["winner_id", "loser_id"]].min(axis=1)
     df_historical["p2_id"] = df_historical[["winner_id", "loser_id"]].max(axis=1)
 
-    lookup = df_historical[["date", "p1_id", "p2_id", "tourney_name"]].copy()
+    # --- ENHANCEMENT: Keep 'score' in the lookup table ---
+    lookup = df_historical[["date", "p1_id", "p2_id", "tourney_name", "score"]].copy()
     lookup.rename(columns={"tourney_name": "historical_tourney_name"}, inplace=True)
 
     return lookup.drop_duplicates(subset=["date", "p1_id", "p2_id"], keep="last")
@@ -62,7 +66,7 @@ def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
 
 def main(paths: DataPaths):
     """
-    Creates the historical match log and enriches it with tournament names.
+    Creates the historical match log and enriches it with tournament names and scores.
     """
     log_info("--- Creating Match Log from Summary File ---")
 
@@ -149,6 +153,11 @@ def main(paths: DataPaths):
 
     match_log_df["surface"] = match_log_df["tourney_name"].apply(get_surface)
 
+    # --- ENHANCEMENT: Add a 'sets_played' column from the score ---
+    match_log_df["sets_played"] = (
+        match_log_df["score"].str.split().str.len().fillna(0).astype(int)
+    )
+
     if match_log_df.empty:
         log_warning("⚠️ No valid, settled matches found. The match log will be empty.")
         output_path = Path(paths.betfair_match_log)
@@ -165,13 +174,13 @@ def main(paths: DataPaths):
                 "loser_id",
                 "loser_historical_id",
                 "loser_name",
+                "score",
+                "sets_played",
             ]
         ).to_csv(output_path, index=False)
         return
 
     match_log_df.sort_values(by="tourney_date", inplace=True)
-    output_path = Path(paths.betfair_match_log)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     final_cols = [
         "match_id",
@@ -184,10 +193,21 @@ def main(paths: DataPaths):
         "loser_id",
         "loser_historical_id",
         "loser_name",
+        "score",
+        "sets_played",
     ]
     for col in final_cols:
         if col not in match_log_df.columns:
             match_log_df[col] = None
 
-    match_log_df[final_cols].to_csv(output_path, index=False)
-    log_success(f"Successfully created match log with {len(match_log_df)} entries.")
+    # Validate the data before saving
+    validated_df = validate_data(
+        match_log_df[final_cols], "betfair_match_log", "Betfair Match Log"
+    )
+
+    output_path = Path(paths.betfair_match_log)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    validated_df.to_csv(output_path, index=False)
+    log_success(
+        f"Successfully created and validated match log with {len(validated_df)} entries."
+    )

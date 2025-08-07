@@ -1,3 +1,4 @@
+# src/tennis_betting_model/pipeline/flumine_strategy.py
 import datetime
 import sqlite3
 import logging
@@ -14,6 +15,7 @@ from flumine.order.trade import Trade
 from ..pipeline.value_finder import MarketProcessor
 from ..utils.common import get_tournament_category
 from ..utils.logger import log_info, log_success, log_warning
+from ..utils.config_schema import Betting, LiveTradingParams
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +30,8 @@ class TennisValueStrategy(BaseStrategy):
         self,
         market_filter: dict,
         market_processor: MarketProcessor,
-        betting_config: dict,
-        live_trading_config: dict,
+        betting_config: Betting,
+        live_trading_config: LiveTradingParams,
         dry_run: bool,
         processed_bets_log_path: str,
         **kwargs,
@@ -40,18 +42,11 @@ class TennisValueStrategy(BaseStrategy):
         self.live_trading_config = live_trading_config
         self.dry_run = dry_run
 
-        self.live_bankroll = float(self.betting_config.get("live_bankroll", 1000.0))
+        self.live_bankroll = self.betting_config.live_bankroll
         self.fallback_bankroll = self.live_bankroll
-        self.live_kelly_fraction = float(
-            self.betting_config.get("live_kelly_fraction", 0.1)
-        )
-        self.max_kelly_stake_fraction = float(
-            self.betting_config.get("max_kelly_stake_fraction", 0.1)
-        )
-
-        self.order_timeout_seconds = int(
-            self.live_trading_config.get("order_timeout_seconds", 120)
-        )
+        self.live_kelly_fraction = self.betting_config.live_kelly_fraction
+        self.max_kelly_stake_fraction = self.betting_config.max_kelly_stake_fraction
+        self.order_timeout_seconds = self.live_trading_config.order_timeout_seconds
 
         self.db_path = Path(processed_bets_log_path)
         self._init_db()
@@ -103,11 +98,10 @@ class TennisValueStrategy(BaseStrategy):
         if market_book.status != "OPEN" or market_book.inplay:
             return False
 
-        profitable_tournaments = self.betting_config.get("profitable_tournaments", [])
-        if profitable_tournaments:
+        if self.betting_config.profitable_tournaments:
             competition_name = getattr(market.market_catalogue.competition, "name", "")
             tournament_category = get_tournament_category(competition_name)
-            if tournament_category not in profitable_tournaments:
+            if tournament_category not in self.betting_config.profitable_tournaments:
                 return False
 
         now = datetime.datetime.now(datetime.timezone.utc)

@@ -1,3 +1,5 @@
+# src/tennis_betting_model/utils/schema.py
+
 import pandas as pd
 import pandera.pandas as pa
 from pandera.typing import Series
@@ -18,15 +20,15 @@ class BetfairMatchLogSchema(pa.DataFrameModel):
     loser_id: Series[int] = pa.Field(coerce=True)
     loser_historical_id: Series[float] = pa.Field(coerce=True, nullable=True)
     loser_name: Series[str] = pa.Field(nullable=True)
-    # --- FIX: Allow 'Unknown' as a valid surface ---
     surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass", "Unknown"])
+    score: Optional[Series[str]] = pa.Field(nullable=True)
+    sets_played: Optional[Series[int]] = pa.Field(nullable=True, coerce=True)
 
     class Config:
         strict = True
         coerce = True
 
 
-# ... (rest of the file is unchanged) ...
 class FinalFeaturesSchema(pa.DataFrameModel):
     """
     Schema for the final feature-engineered DataFrame before model training.
@@ -35,7 +37,6 @@ class FinalFeaturesSchema(pa.DataFrameModel):
     market_id: Series[str] = pa.Field(nullable=False)
     tourney_date: Series[pa.DateTime] = pa.Field(nullable=False, coerce=True)
     tourney_name: Series[str] = pa.Field(nullable=True)
-    # --- FIX: Allow 'Unknown' as a valid surface ---
     surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass", "Unknown"])
     p1_id: Series[int] = pa.Field(coerce=True)
     p2_id: Series[int] = pa.Field(coerce=True)
@@ -57,13 +58,23 @@ class FinalFeaturesSchema(pa.DataFrameModel):
     p2_matches_last_14_days: Series[int] = pa.Field(ge=0, coerce=True)
     fatigue_diff_7_days: Series[int] = pa.Field(coerce=True)
     fatigue_diff_14_days: Series[int] = pa.Field(coerce=True)
-    h2h_p1_wins: Series[int] = pa.Field(ge=0, coerce=True)
-    h2h_p2_wins: Series[int] = pa.Field(ge=0, coerce=True)
+    h2h_surface_p1_wins: Series[int] = pa.Field(ge=0, coerce=True)
+    h2h_surface_p2_wins: Series[int] = pa.Field(ge=0, coerce=True)
     winner: Series[int] = pa.Field(isin=[0, 1])
     p1_hand_R: Optional[Series[int]] = pa.Field(isin=[0, 1])
     p1_hand_U: Optional[Series[int]] = pa.Field(isin=[0, 1])
     p2_hand_R: Optional[Series[int]] = pa.Field(isin=[0, 1])
     p2_hand_U: Optional[Series[int]] = pa.Field(isin=[0, 1])
+    # --- ENHANCEMENT: Add new feature columns to the schema ---
+    p1_implied_prob: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    p2_implied_prob: Series[float] = pa.Field(ge=0, le=1, coerce=True)
+    book_margin: Series[float] = pa.Field(coerce=True)
+    p1_sets_played_last_7_days: Series[int] = pa.Field(ge=0, coerce=True)
+    p2_sets_played_last_7_days: Series[int] = pa.Field(ge=0, coerce=True)
+    p1_sets_played_last_14_days: Series[int] = pa.Field(ge=0, coerce=True)
+    p2_sets_played_last_14_days: Series[int] = pa.Field(ge=0, coerce=True)
+    fatigue_sets_diff_7_days: Series[int] = pa.Field(coerce=True)
+    fatigue_sets_diff_14_days: Series[int] = pa.Field(coerce=True)
 
     class Config:
         strict = False
