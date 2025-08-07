@@ -1,5 +1,3 @@
-# src/tennis_betting_model/pipeline/flumine_strategy.py
-
 import datetime
 import json
 import logging
@@ -13,12 +11,10 @@ from flumine.order.order import OrderStatus
 from flumine.order.ordertype import LimitOrder
 from flumine.order.trade import Trade
 
-# FIX: Imports moved to the top of the file to resolve Ruff E402 error
 from ..pipeline.value_finder import MarketProcessor
 from ..utils.common import get_tournament_category
 from ..utils.logger import log_info, log_success, log_warning
 
-# Set up a specific logger for this module
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +40,6 @@ class TennisValueStrategy(BaseStrategy):
         self.live_trading_config = live_trading_config
         self.dry_run = dry_run
 
-        # Staking parameters
         self.live_bankroll = float(self.betting_config.get("live_bankroll", 1000.0))
         self.fallback_bankroll = self.live_bankroll
         self.live_kelly_fraction = float(
@@ -58,7 +53,6 @@ class TennisValueStrategy(BaseStrategy):
             self.live_trading_config.get("order_timeout_seconds", 120)
         )
 
-        # State Persistence
         self.processed_bets_log_path = Path(processed_bets_log_path)
         self.processed_selections = self._load_processed_selections()
 
@@ -92,7 +86,13 @@ class TennisValueStrategy(BaseStrategy):
             not market.market_catalogue
             or not market.market_catalogue.competition
             or not market_book.market_definition
+            or not market.market_catalogue.event
         ):
+            return False
+
+        # Filter to exclude doubles matches
+        # Singles matches are typically named "Player A v Player B"
+        if " v " not in market.market_catalogue.event.name:
             return False
 
         if market_book.status != "OPEN" or market_book.inplay:
@@ -112,7 +112,6 @@ class TennisValueStrategy(BaseStrategy):
 
         seconds_to_start = (start_time - now).total_seconds()
 
-        # Only process markets starting within the next hour but not within the next minute
         if 60 < seconds_to_start < 3600:
             return True
 
@@ -128,7 +127,6 @@ class TennisValueStrategy(BaseStrategy):
     def _get_live_bankroll(self) -> Optional[float]:
         client = self.clients.get_default()
         if client and client.account_funds:
-            # FIX: Cast to float to resolve mypy no-any-return error
             return float(client.account_funds.available_to_bet_balance)
         return None
 

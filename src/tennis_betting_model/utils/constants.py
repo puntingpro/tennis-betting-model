@@ -13,6 +13,3 @@ DEFAULT_PLAYER_RANK = 500  # Moved from common.py
 
 # --- Simulation Defaults ---
 DEFAULT_INITIAL_BANKROLL = 1000.0
-
-# --- Live Trading ---
-STREAM_LIMIT = 195  # Moved from run_flumine.py

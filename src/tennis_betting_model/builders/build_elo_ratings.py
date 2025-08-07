@@ -5,9 +5,9 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 from typing import Any
-from tennis_betting_model.utils.config import load_config
+from collections import defaultdict  # Import defaultdict
 
-# --- FIX: Import the get_surface utility ---
+from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.common import get_surface
 from tennis_betting_model.utils.logger import log_warning, log_info
 
@@ -17,13 +17,14 @@ class EloCalculator:
     k_factor: int
     rating_diff_factor: int
     initial_rating: int = 1500
-    # --- FIX: Elo ratings are now nested by surface ---
+    # --- FIX START: Use defaultdict to handle any surface type, including 'Unknown' ---
     elo_ratings: dict[str, dict[int, float]] = field(
-        default_factory=lambda: {"Hard": {}, "Clay": {}, "Grass": {}}
+        default_factory=lambda: defaultdict(dict)
     )
+    # --- FIX END ---
 
     def get_player_rating(self, player_id: int, surface: str) -> float:
-        """Gets a player's rating for a specific surface."""
+        """Gets a player's rating for a specific surface. Creates the surface entry if it doesn't exist."""
         return self.elo_ratings[surface].get(player_id, self.initial_rating)
 
     def update_ratings(self, winner_id: int, loser_id: int, surface: str) -> None:
@@ -55,7 +56,6 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
     match_data["tourney_date"] = pd.to_datetime(match_data["tourney_date"])
     match_data = match_data.sort_values(by="tourney_date").reset_index(drop=True)
 
-    # Coerce non-numeric values in ID columns to NaN
     match_data["winner_historical_id"] = pd.to_numeric(
         match_data["winner_historical_id"], errors="coerce"
     )
@@ -63,7 +63,6 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
         match_data["loser_historical_id"], errors="coerce"
     )
 
-    # Drop rows where IDs are missing
     match_data.dropna(
         subset=["winner_historical_id", "loser_historical_id"], inplace=True
     )
@@ -75,7 +74,9 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
         {"winner_historical_id": "int64", "loser_historical_id": "int64"}
     )
 
-    # --- FIX: Determine surface for each match ---
+    match_data.drop_duplicates(subset=["match_id"], keep="first", inplace=True)
+
+    # The 'surface' column may now contain 'Unknown', which is handled by the defaultdict
     match_data["surface"] = match_data["tourney_name"].apply(get_surface)
 
     for row in tqdm(
@@ -89,7 +90,6 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
             row.surface,
         )
 
-        # --- FIX: Get pre-match Elo for the correct surface ---
         winner_pre_match_elo = calculator.get_player_rating(winner_id, surface)
         loser_pre_match_elo = calculator.get_player_rating(loser_id, surface)
 
@@ -110,7 +110,6 @@ def _calculate_elo_ratings(match_data: pd.DataFrame, elo_config: dict) -> pd.Dat
             }
         )
 
-        # --- FIX: Update ratings for the correct surface ---
         calculator.update_ratings(
             winner_id=winner_id, loser_id=loser_id, surface=surface
         )
@@ -140,12 +139,10 @@ def main():
     output_path = Path(paths["elo_ratings"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # --- REFACTOR: Add check for empty DataFrame to prevent downstream errors ---
     if elo_df.empty:
         log_warning(
             "⚠️ No matches found to calculate Elo ratings. Saving an empty Elo file with headers."
         )
-        # Define headers to ensure downstream processes don't fail
         headers = ["match_id", "p1_id", "p2_id", "p1_elo", "p2_elo"]
         pd.DataFrame(columns=headers).to_csv(output_path, index=False)
     else:

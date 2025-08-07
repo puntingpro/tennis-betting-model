@@ -1,11 +1,9 @@
 # /tennis-betting-model/setup.py
 from setuptools import setup, find_packages
 
+# Read dependencies directly from requirements.txt
 with open("requirements.txt") as f:
-    required = f.read().splitlines()
-
-### IMPROVEMENT: Consolidate all dependencies into a single source of truth.
-install_deps = required + ["lightgbm", "pydantic", "flumine"]
+    install_deps = f.read().splitlines()
 
 setup(
     name="tennis_betting_model",
@@ -15,7 +13,7 @@ setup(
     description="An automated trading bot for the Betfair Tennis exchange.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/tennis-betting-model",
+    url="ttps://github.com/puntingpro/tennis-betting-model",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.9",

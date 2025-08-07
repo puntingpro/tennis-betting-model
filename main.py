@@ -9,7 +9,7 @@ from src.tennis_betting_model.builders.data_preparer import (
     consolidate_player_attributes,
     consolidate_rankings,
 )
-from src.tennis_betting_model.builders.player_mapper import create_mapping_file
+from src.tennis_betting_model.builders.player_mapper import run_create_mapping_file
 from src.tennis_betting_model.builders.build_match_log import main as build_match_log
 from src.tennis_betting_model.builders.build_elo_ratings import main as build_elo
 from src.tennis_betting_model.builders.build_player_features import (
@@ -54,15 +54,15 @@ def run_data_preparation_pipeline(args):
     consolidate_rankings(config)
     log_info("\nStep 3: Building RAW odds from Betfair summary files...")
     build_raw_odds()
-    log_success("\n--- Data Preparation Finished ---")
+    log_success("Data Preparation Finished")
 
 
 def run_player_map_pipeline(args):
     """Runs the standalone player mapping generation."""
     log_info("--- Running Player Mapping ---")
     config = load_config(args.config)
-    create_mapping_file(config)
-    log_success("\n--- Player Mapping Finished ---")
+    run_create_mapping_file(config)
+    log_success("Player Mapping Finished")
 
 
 def run_build_pipeline(args):
@@ -77,7 +77,7 @@ def run_build_pipeline(args):
     build_features(args)
     log_info("\nStep 4: Building clean market data for realistic backtesting...")
     build_backtest_data()
-    log_success("\n--- Data Build Finished ---")
+    log_success("Data Build Finished")
 
 
 def run_dashboard_command(args):
@@ -117,7 +117,6 @@ def main():
         dest="command", required=True, help="Available commands"
     )
 
-    # --- Command to Function Mapping ---
     command_functions = {
         "stream": run_stream,
         "prepare-data": run_data_preparation_pipeline,
@@ -133,7 +132,6 @@ def main():
         "dashboard": run_dashboard_command,
     }
 
-    # --- Define Parsers ---
     p_stream = subparsers.add_parser(
         "stream", help="Run the live, real-time trading bot using the Stream API."
     )
@@ -196,7 +194,6 @@ def main():
     args = parser.parse_args()
     setup_logging()
 
-    # --- Execute Command ---
     command = args.command
     if args.command == "analysis":
         command = args.analysis_command

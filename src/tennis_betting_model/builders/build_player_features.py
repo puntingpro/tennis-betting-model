@@ -1,10 +1,8 @@
-# src/tennis_betting_model/builders/build_player_features.py
-
 import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
 from typing import Dict, Any
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.utils.data_loader import load_all_pipeline_data
@@ -13,6 +11,7 @@ from tennis_betting_model.utils.logger import (
     log_success,
     setup_logging,
     log_error,
+    log_warning,
 )
 from tennis_betting_model.utils.common import get_surface, get_most_recent_ranking
 from tennis_betting_model.utils.schema import validate_data
@@ -35,6 +34,7 @@ def _generate_features_chronologically(
             "surface_matches": defaultdict(int),
             "surface_wins": defaultdict(int),
             "recent_matches": [],
+            "elo_history": deque(maxlen=5),
         }
     )
     h2h_stats: Dict[str, Any] = defaultdict(lambda: {"p1_wins": 0, "p2_wins": 0})
@@ -59,24 +59,43 @@ def _generate_features_chronologically(
         if p1_id == p2_id:
             continue
 
-        # --- Get PRE-MATCH stats from the state dictionaries ---
         p1_stats = player_stats[p1_id]
         p2_stats = player_stats[p2_id]
         h2h_key = f"{p1_id}-{p2_id}"
         h2h = h2h_stats[h2h_key]
 
-        # Rankings and Elo
-        p1_rank = get_most_recent_ranking(df_rankings, p1_id, match_date)
-        p2_rank = get_most_recent_ranking(df_rankings, p2_id, match_date)
+        # --- FIX START: Make Elo lookup robust to duplicates ---
         try:
-            match_elo = df_elo_lookup.loc[match_id]
+            match_elo_data = df_elo_lookup.loc[match_id]
+            # If duplicates exist, .loc returns a DataFrame; otherwise, a Series
+            if isinstance(match_elo_data, pd.DataFrame):
+                # If we find duplicates, log it and use the first entry
+                log_warning(
+                    f"Duplicate match_id '{match_id}' found in Elo data. Using first entry."
+                )
+                match_elo = match_elo_data.iloc[0]
+            else:
+                match_elo = match_elo_data
+
             p1_elo = match_elo["p1_elo"]
             p2_elo = match_elo["p2_elo"]
         except KeyError:
             p1_elo = ELO_INITIAL_RATING
             p2_elo = ELO_INITIAL_RATING
+        # --- FIX END ---
 
-        # Win percentages
+        p1_elo_hist = list(p1_stats["elo_history"])
+        p1_elo_momentum = (
+            p1_elo - (sum(p1_elo_hist) / len(p1_elo_hist)) if p1_elo_hist else 0
+        )
+        p2_elo_hist = list(p2_stats["elo_history"])
+        p2_elo_momentum = (
+            p2_elo - (sum(p2_elo_hist) / len(p2_elo_hist)) if p2_elo_hist else 0
+        )
+
+        # Other features...
+        p1_rank = get_most_recent_ranking(df_rankings, p1_id, match_date)
+        p2_rank = get_most_recent_ranking(df_rankings, p2_id, match_date)
         p1_win_perc = (
             p1_stats["wins"] / p1_stats["matches_played"]
             if p1_stats["matches_played"] > 0
@@ -97,8 +116,6 @@ def _generate_features_chronologically(
             if p2_stats["surface_matches"][surface] > 0
             else 0
         )
-
-        # Form and fatigue
         p1_recent_matches = [
             d for d in p1_stats["recent_matches"] if (match_date - d[0]).days < 30
         ]
@@ -117,7 +134,6 @@ def _generate_features_chronologically(
             if p2_recent_matches
             else 0
         )
-
         p1_matches_last_7 = sum(
             1 for d, _ in p1_recent_matches if (match_date - d).days <= 7
         )
@@ -131,7 +147,6 @@ def _generate_features_chronologically(
             1 for d, _ in p2_recent_matches if (match_date - d).days <= 14
         )
 
-        # Assemble feature dictionary
         feature_dict = {
             "market_id": match_id,
             "tourney_date": match_date,
@@ -145,6 +160,9 @@ def _generate_features_chronologically(
             "p1_elo": p1_elo,
             "p2_elo": p2_elo,
             "elo_diff": p1_elo - p2_elo,
+            "p1_elo_momentum": p1_elo_momentum,
+            "p2_elo_momentum": p2_elo_momentum,
+            "elo_momentum_diff": p1_elo_momentum - p2_elo_momentum,
             "p1_win_perc": p1_win_perc,
             "p2_win_perc": p2_win_perc,
             "p1_surface_win_perc": p1_surface_win_perc,
@@ -165,16 +183,22 @@ def _generate_features_chronologically(
         }
         all_features.append(feature_dict)
 
-        # --- UPDATE STATE for the next iteration ---
+        # UPDATE STATE
         player_stats[winner_id]["matches_played"] += 1
         player_stats[winner_id]["wins"] += 1
         player_stats[winner_id]["surface_matches"][surface] += 1
         player_stats[winner_id]["surface_wins"][surface] += 1
         player_stats[winner_id]["recent_matches"].append((match_date, True))
+        player_stats[winner_id]["elo_history"].append(
+            p1_elo if winner_id == p1_id else p2_elo
+        )
 
         player_stats[loser_id]["matches_played"] += 1
         player_stats[loser_id]["surface_matches"][surface] += 1
         player_stats[loser_id]["recent_matches"].append((match_date, False))
+        player_stats[loser_id]["elo_history"].append(
+            p1_elo if loser_id == p1_id else p2_elo
+        )
 
         if p1_id == winner_id:
             h2h_stats[h2h_key]["p1_wins"] += 1
@@ -195,7 +219,7 @@ def main(args):
             paths
         )
     except FileNotFoundError:
-        return  # Errors are logged in the load function
+        return
 
     log_info("--- Starting High-Performance Feature Engineering ---")
     df_elo_lookup = df_elo.set_index("match_id")

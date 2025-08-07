@@ -16,7 +16,6 @@ def get_most_recent_ranking(
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
 
-    # Group rankings by player for efficient lookup
     if not hasattr(get_most_recent_ranking, "player_rankings_map"):
         get_most_recent_ranking.player_rankings_map = dict(  # type: ignore
             tuple(df_rankings.groupby("player"))
@@ -27,7 +26,6 @@ def get_most_recent_ranking(
     if player_rankings is None or player_rankings.empty:
         return DEFAULT_PLAYER_RANK
 
-    # Use searchsorted for efficient lookup on the sorted dates
     dates = player_rankings["ranking_date"]
     index = dates.searchsorted(match_date, side="right") - 1
 
@@ -39,6 +37,11 @@ def get_most_recent_ranking(
 
 def get_surface(tourney_name: str) -> str:
     """Determines the court surface from the tournament name."""
+    # --- FIX START: Handle null tournament names gracefully ---
+    if pd.isna(tourney_name):
+        return "Unknown"
+    # --- FIX END ---
+
     name = str(tourney_name).lower()
 
     if "(clay)" in name:

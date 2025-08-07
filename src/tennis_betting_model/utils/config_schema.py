@@ -33,6 +33,14 @@ class MappingParams(BaseModel):
 class TrainingParams(BaseModel):  # Renamed from ModelParams
     hyperparameter_trials: int
     max_training_samples: int | None = None
+    early_stopping_rounds: int
+    validation_size: float
+
+
+class LiveTradingParams(BaseModel):
+    poll_hours_ahead: int
+    order_timeout_seconds: int
+    stream_limit: int
 
 
 class Betting(BaseModel):
@@ -67,6 +75,7 @@ class Config(BaseModel):
     elo_config: EloConfig
     mapping_params: MappingParams
     training_params: TrainingParams  # Renamed from model_params
+    live_trading_params: LiveTradingParams
     betting: Betting
     analysis_strategies: List[AnalysisStrategy]
     analysis_params: AnalysisParams

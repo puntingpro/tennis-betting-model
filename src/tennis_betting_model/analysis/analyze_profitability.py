@@ -69,5 +69,5 @@ def main_cli(args):
         print_report(strategy_df, f"Strategy: {name}")
 
 
-# --- REFACTOR: Redundant __main__ block removed. ---
+# --- REFACTOR: Redundant __main__ block removed.
 # This script is now only callable via the main.py entrypoint.

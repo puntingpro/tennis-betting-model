@@ -18,7 +18,6 @@ from ..utils.api import login_to_betfair
 from ..utils.config import load_config
 from ..utils.data_loader import load_all_pipeline_data
 from ..utils.logger import log_error, log_info, log_warning, setup_logging
-from ..utils.constants import STREAM_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +62,19 @@ def poll_markets(context: dict, flumine):
     lightweight_client = context.get("lightweight_client")
     poll_filter = context.get("poll_filter")
     strategy = context.get("strategy")
+    stream_limit = context.get("stream_limit")
 
-    if not all([lightweight_client, poll_filter, strategy]):
+    if not all([lightweight_client, poll_filter, strategy, stream_limit]):
         logger.error("Worker: Missing required objects in context.")
         return
+
+    # --- FIX: Assert types after the check to satisfy mypy ---
     assert poll_filter is not None
     assert strategy is not None
+    assert stream_limit is not None
 
     target_market_ids = fetch_and_limit_market_ids(
-        lightweight_client, poll_filter, STREAM_LIMIT
+        lightweight_client, poll_filter, stream_limit
     )
     old_stream = next((s for s in flumine.streams if isinstance(s, MarketStream)), None)
     if not old_stream:
@@ -145,6 +148,7 @@ def main(args):
         return
 
     poll_hours_ahead = live_trading_config.get("poll_hours_ahead", 12)
+    stream_limit = live_trading_config.get("stream_limit", 195)
     now = datetime.datetime.utcnow()
     end_time = now + datetime.timedelta(hours=poll_hours_ahead)
     poll_filter = betfairlightweight.filters.market_filter(
@@ -158,7 +162,7 @@ def main(args):
 
     log_info("Pre-polling markets to determine initial subscription list...")
     initial_market_ids = fetch_and_limit_market_ids(
-        lightweight_client, poll_filter, STREAM_LIMIT
+        lightweight_client, poll_filter, stream_limit
     )
 
     log_info("Loading ML Model and supporting data...")
@@ -203,6 +207,7 @@ def main(args):
         "lightweight_client": lightweight_client,
         "poll_filter": poll_filter,
         "strategy": strategy,
+        "stream_limit": stream_limit,
     }
     framework.add_worker(
         BackgroundWorker(

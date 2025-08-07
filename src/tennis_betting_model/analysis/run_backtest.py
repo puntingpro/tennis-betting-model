@@ -33,6 +33,7 @@ def _run_simulation_backtest(df: pd.DataFrame) -> pd.DataFrame:
         BACKTEST_MAX_ODDS,
     ).clip(max=BACKTEST_MAX_ODDS)
     bets_df = df.copy()
+    # In simulation mode, the source column is 'match_id', so we rename it.
     bets_df.rename(columns={"match_id": "market_id"}, inplace=True)
     return bets_df
 
@@ -51,7 +52,19 @@ def _run_realistic_backtest(
         log_error("Could not merge any features with the backtest market data.")
         return pd.DataFrame()
     log_info(f"Successfully merged {len(bets_df)} markets. Making predictions...")
-    bets_df.rename(columns={"winner_y": "winner"}, inplace=True)
+
+    # --- FIX START: Rename columns with suffixes created by the merge ---
+    bets_df.rename(
+        columns={
+            "market_id_x": "market_id",
+            "tourney_name_x": "tourney_name",
+            "surface_x": "surface",
+            "winner_y": "winner",
+        },
+        inplace=True,
+    )
+    # --- FIX END ---
+
     return bets_df
 
 
@@ -87,7 +100,6 @@ def run_backtest(
     )[:, 1]
     bets_df["p2_predicted_prob"] = 1 - bets_df["p1_predicted_prob"]
 
-    # --- ENHANCEMENT: Add surface to output for better analysis ---
     base_cols = ["market_id", "tourney_name", "tourney_date", "surface", "winner"]
     bets_p1 = bets_df[base_cols].copy()
     bets_p1["odds"] = bets_df["p1_odds"]
@@ -124,8 +136,10 @@ def main(args):
     features_df = pd.read_csv(
         paths["consolidated_features"], parse_dates=["tourney_date"]
     )
+    # The feature file has a 'market_id', but the historical data uses 'match_id'.
+    # For simulation mode, we need to align the name.
     features_df.rename(
-        columns={"winner_historical_id": "p1_id", "loser_historical_id": "p2_id"},
+        columns={"market_id": "match_id"},
         inplace=True,
     )
     features_df.rename(

@@ -1,49 +1,22 @@
 import pandas as pd
 import streamlit as st
-from pathlib import Path
 from typing import cast, Tuple, List, Any
 import datetime
 
-from tennis_betting_model.utils.logger import setup_logging, log_error
+from tennis_betting_model.utils.logger import setup_logging
 from tennis_betting_model.utils.config import load_config
 from tennis_betting_model.pipeline.simulate_bankroll_growth import (
     simulate_bankroll_growth,
     calculate_max_drawdown,
 )
+from tennis_betting_model.utils.data_loader import load_backtest_data_for_dashboard
 
 
 @st.cache_data
-def load_backtest_data(paths: dict) -> pd.DataFrame:
-    """Loads and prepares the backtest results data."""
-    try:
-        results_path = Path(paths["backtest_results"])
-        df = pd.read_csv(results_path)
-        df["tourney_date"] = pd.to_datetime(df["tourney_date"])
-
-        if "pnl" not in df.columns:
-            df["pnl"] = df.apply(
-                lambda row: (row["odds"] - 1) * 0.95 if row["winner"] == 1 else -1,
-                axis=1,
-            )
-
-        features_path = Path(paths["consolidated_features"])
-        if features_path.exists():
-            df_features = pd.read_csv(features_path, usecols=["market_id", "rank_diff"])
-            df["market_id"] = df["market_id"].astype(str)
-            df_features["market_id"] = df_features["market_id"].astype(str)
-            df = pd.merge(df, df_features, on="market_id", how="left")
-        else:
-            df["rank_diff"] = 0
-
-        return df.sort_values("tourney_date")
-    except FileNotFoundError:
-        log_error(
-            f"Backtest results not found at {paths['backtest_results']}. Please run a backtest first."
-        )
-        return cast(pd.DataFrame, pd.DataFrame())
-    except Exception as e:
-        st.error(f"An error occurred loading backtest data: {e}")
-        return cast(pd.DataFrame, pd.DataFrame())
+def load_data(paths: dict) -> pd.DataFrame:
+    """Wrapper function to cache the data loading."""
+    # --- FIX: Explicitly cast the return type to satisfy mypy ---
+    return cast(pd.DataFrame, load_backtest_data_for_dashboard(paths))
 
 
 def create_summary_table(
@@ -55,7 +28,6 @@ def create_summary_table(
         st.warning(f"Data for '{column}' is not available to generate summary.")
         return
 
-    # For EV, we need to dynamically add the max value to the bins
     if column == "expected_value" and not df.empty:
         bins.append(df["expected_value"].max())
 
@@ -77,7 +49,7 @@ def run() -> None:
     st.set_page_config(layout="wide", page_title="Performance Dashboard")
     setup_logging()
 
-    st.title("疾 PuntingPro Performance Dashboard")
+    st.title("Performance Dashboard")
     st.markdown(
         "An interactive dashboard to analyze backtesting results and betting strategies."
     )
@@ -86,7 +58,7 @@ def run() -> None:
         config = load_config("config.yaml")
         paths = config["data_paths"]
         analysis_params = config.get("analysis_params", {})
-        df_full = load_backtest_data(paths)
+        df_full = load_data(paths)
     except Exception as e:
         st.error(f"Failed to load configuration or data. Error: {e}")
         return
@@ -95,7 +67,6 @@ def run() -> None:
         st.warning("No backtest data available to display.")
         return
 
-    # --- Sidebar Filters ---
     st.sidebar.header("Master Strategy Filters")
 
     min_date = df_full["tourney_date"].min().date()
@@ -121,7 +92,6 @@ def run() -> None:
         step=0.01,
     )
 
-    # --- Filter Data based on sidebar selections ---
     date_range_tuple = cast(Tuple[datetime.date, datetime.date], date_range)
     odds_range_tuple = cast(Tuple[float, float], odds_range)
     ev_range_tuple = cast(Tuple[float, float], ev_range)
@@ -142,8 +112,7 @@ def run() -> None:
         st.info("No bets match the current filter criteria.")
         return
 
-    # --- Main Page Layout ---
-    st.header("嶋 Performance Overview")
+    st.header("Performance Overview")
     total_bets = len(df)
     total_pnl = df["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
@@ -157,8 +126,7 @@ def run() -> None:
 
     st.divider()
 
-    # --- Bankroll Simulation Section ---
-    st.header("腸 Bankroll Growth Simulation")
+    st.header("Bankroll Growth Simulation")
     sim_col1, sim_col2 = st.columns([1, 3])
 
     with sim_col1:
@@ -180,6 +148,7 @@ def run() -> None:
 
     simulated_df = simulate_bankroll_growth(
         df.copy(),
+        config["simulation_params"],
         initial_bankroll=initial_bankroll,
         strategy=staking_strategy,
         stake_unit=stake_unit,
@@ -201,8 +170,7 @@ def run() -> None:
 
     st.divider()
 
-    # --- Performance Breakdown Section ---
-    st.header("投 Performance Breakdown")
+    st.header("Performance Breakdown")
     breakdown_col1, breakdown_col2 = st.columns(2)
 
     with breakdown_col1:
@@ -230,8 +198,7 @@ def run() -> None:
 
     st.divider()
 
-    # --- Filtered Bet History ---
-    st.header("搭 Filtered Bet History")
+    st.header("Filtered Bet History")
     st.dataframe(
         df[
             [
