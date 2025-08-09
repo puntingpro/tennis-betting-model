@@ -1,8 +1,9 @@
-# mypy: disable-error-code="no-any-return"
 # src/tennis_betting_model/utils/common.py
+# mypy: disable-error-code="no-any-return"
 
 import pandas as pd
 from typing import cast
+from .constants import Surface
 
 
 def get_most_recent_ranking(
@@ -39,19 +40,17 @@ def get_most_recent_ranking(
 
 def get_surface(tourney_name: str) -> str:
     """Determines the court surface from the tournament name."""
-    # --- FIX START: Handle null tournament names gracefully ---
     if pd.isna(tourney_name):
-        return "Unknown"
-    # --- FIX END ---
+        return Surface.UNKNOWN.value
 
     name = str(tourney_name).lower()
 
     if "(clay)" in name:
-        return "Clay"
+        return Surface.CLAY.value
     if "(grass)" in name:
-        return "Grass"
+        return Surface.GRASS.value
     if "(hard)" in name:
-        return "Hard"
+        return Surface.HARD.value
 
     clay_keywords = ["roland garros", "french open", "monte carlo", "madrid", "rome"]
     grass_keywords = [
@@ -63,11 +62,11 @@ def get_surface(tourney_name: str) -> str:
     ]
 
     if any(keyword in name for keyword in grass_keywords):
-        return "Grass"
+        return Surface.GRASS.value
     if any(keyword in name for keyword in clay_keywords):
-        return "Clay"
+        return Surface.CLAY.value
 
-    return "Hard"
+    return Surface.HARD.value
 
 
 def get_tournament_category(tourney_name: str) -> str:

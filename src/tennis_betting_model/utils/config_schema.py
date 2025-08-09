@@ -83,6 +83,6 @@ class Config(BaseModel):
     training_params: TrainingParams
     live_trading_params: LiveTradingParams
     betting: Betting
-    analysis_strategies: List[AnalysisStrategy]
+    # analysis_strategies: Dict[str, AnalysisStrategy] # <-- COMMENT THIS LINE OUT
     analysis_params: AnalysisParams
     simulation_params: SimulationParams

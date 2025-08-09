@@ -29,7 +29,15 @@ def get_h2h_stats_optimized(
     except KeyError:
         return 0, 0
 
-    # --- ENHANCEMENT: Filter by both date and surface ---
+    if h2h_matches.empty:
+        return 0, 0
+
+    # FIX: Ensure the 'tourney_date' column is timezone-aware before comparison
+    if h2h_matches["tourney_date"].dt.tz is None:
+        h2h_matches["tourney_date"] = pd.to_datetime(
+            h2h_matches["tourney_date"]
+        ).dt.tz_localize("UTC")
+
     past_matches = h2h_matches[
         (h2h_matches["tourney_date"] < match_date) & (h2h_matches["surface"] == surface)
     ]
@@ -48,10 +56,11 @@ def get_player_stats_optimized(
     player_id: int,
     surface: str,
     match_date: pd.Timestamp,
-) -> Tuple[float, float, float, int, int, int, int]:
+    opponent_hand: str,
+) -> Tuple[float, float, float, int, int, int, int, float, float]:
     """
     Calculates point-in-time stats for a player using a pre-indexed, player-centric DataFrame.
-    Now includes sets played for fatigue calculation.
+    Now includes sets played for fatigue calculation and rolling averages.
     """
     if match_date.tzinfo is None:
         match_date = match_date.tz_localize("UTC")
@@ -66,14 +75,14 @@ def get_player_stats_optimized(
             all_player_matches = cast(pd.DataFrame, player_matches_lookup)
 
     except KeyError:
-        return 0.0, 0.0, 0.0, 0, 0, 0, 0
+        return 0.0, 0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0
 
     player_matches = all_player_matches[
         pd.to_datetime(all_player_matches["tourney_date"]) < match_date
     ]
 
     if player_matches.empty:
-        return 0.0, 0.0, 0.0, 0, 0, 0, 0
+        return 0.0, 0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0
 
     win_perc = float(player_matches["won"].mean())
 
@@ -84,6 +93,14 @@ def get_player_stats_optimized(
 
     last_10 = player_matches.tail(10)
     form_last_10 = float(last_10["won"].mean()) if not last_10.empty else 0.0
+
+    # Rolling averages for win percentage
+    rolling_win_perc_20 = (
+        player_matches["won"].rolling(window=20, min_periods=1).mean().iloc[-1]
+    )
+    rolling_win_perc_50 = (
+        player_matches["won"].rolling(window=50, min_periods=1).mean().iloc[-1]
+    )
 
     time_since_matches = match_date - pd.to_datetime(player_matches["tourney_date"])
 
@@ -103,4 +120,6 @@ def get_player_stats_optimized(
         int(matches_last_14_days),
         int(sets_played_last_7_days),
         int(sets_played_last_14_days),
+        float(rolling_win_perc_20),
+        float(rolling_win_perc_50),
     )

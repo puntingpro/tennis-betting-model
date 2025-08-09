@@ -15,9 +15,10 @@ from ..builders.feature_builder import FeatureBuilder
 from ..pipeline.flumine_strategy import TennisValueStrategy
 from ..pipeline.value_finder import MarketProcessor
 from ..utils.api import login_to_betfair
-from ..utils.config import load_config, Config
+from ..utils.config_schema import Config
 from ..utils.data_loader import DataLoader
 from ..utils.logger import log_error, log_info, log_warning, setup_logging
+from ..utils.constants import BETFAIR_TENNIS_EVENT_TYPE_ID
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,6 @@ def poll_markets(context: dict, flumine):
         logger.error("Worker: Missing required objects in context.")
         return
 
-    # --- FIX: Assert types after the check to satisfy mypy ---
     assert poll_filter is not None
     assert strategy is not None
     assert stream_limit is not None
@@ -118,24 +118,17 @@ def poll_markets(context: dict, flumine):
         )
 
 
-def main(args):
+def main(config: Config, dry_run: bool):
     setup_logging()
     logging.getLogger("flumine").setLevel(logging.INFO)
     logging.getLogger("betfairlightweight").setLevel(logging.WARNING)
 
-    if args.dry_run:
+    if dry_run:
         log_warning(
             "DRY-RUN MODE: Starting Real-Time Streaming Service. No bets will be placed."
         )
     else:
         log_info("LIVE MODE: Starting Real-Time Streaming Service.")
-
-    try:
-        config = Config(**load_config(args.config))
-        log_info("Configuration file validation successful.")
-    except Exception as e:
-        log_error(f"Failed to load configuration: {e}. Exiting.")
-        return
 
     try:
         lightweight_client = login_to_betfair(config.dict())
@@ -149,7 +142,7 @@ def main(args):
     now = datetime.datetime.utcnow()
     end_time = now + datetime.timedelta(hours=poll_hours_ahead)
     poll_filter = betfairlightweight.filters.market_filter(
-        event_type_ids=["2"],
+        event_type_ids=[BETFAIR_TENNIS_EVENT_TYPE_ID],
         market_type_codes=["MATCH_ODDS"],
         market_start_time={
             "from": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -202,7 +195,7 @@ def main(args):
         market_processor=market_processor,
         betting_config=config.betting,
         live_trading_config=config.live_trading_params,
-        dry_run=args.dry_run,
+        dry_run=dry_run,
         processed_bets_log_path=config.data_paths.processed_bets_log,
         market_data_filter=streaming_data_filter,
     )

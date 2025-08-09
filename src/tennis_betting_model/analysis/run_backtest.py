@@ -1,20 +1,19 @@
 # src/tennis_betting_model/analysis/run_backtest.py
 import pandas as pd
 import joblib
-import argparse
 import numpy as np
 from pathlib import Path
 from typing import cast
 
-from tennis_betting_model.utils.logger import (
+from src.tennis_betting_model.utils.logger import (
     log_info,
     log_success,
     log_error,
     setup_logging,
 )
-from tennis_betting_model.utils.config import load_config
-from tennis_betting_model.utils.betting_math import add_ev_and_kelly, calculate_pnl
-from tennis_betting_model.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
+from src.tennis_betting_model.utils.config_schema import Config
+from src.tennis_betting_model.utils.betting_math import add_ev_and_kelly, calculate_pnl
+from src.tennis_betting_model.utils.constants import BACKTEST_MAX_ODDS, BOOKMAKER_MARGIN
 
 
 def _run_simulation_backtest(df: pd.DataFrame) -> pd.DataFrame:
@@ -52,22 +51,21 @@ def _run_realistic_backtest(
         return pd.DataFrame()
     log_info(f"Successfully merged {len(bets_df)} markets. Making predictions...")
 
-    # --- FIX START: Rename all suffixed columns created by the merge ---
+    # FIX: Correct the key from 'market_id_x' to 'match_id_x'
     bets_df.rename(
         columns={
-            "market_id_x": "market_id",
+            "match_id_x": "market_id",
             "tourney_name_x": "tourney_name",
             "surface_x": "surface",
             "winner_y": "winner",
-            # Add renames for our new market-based features
             "p1_implied_prob_y": "p1_implied_prob",
             "p2_implied_prob_y": "p2_implied_prob",
             "book_margin_y": "book_margin",
+            "p1_odds_y": "p1_odds",
+            "p2_odds_y": "p2_odds",
         },
         inplace=True,
     )
-    # --- FIX END ---
-
     return bets_df
 
 
@@ -122,22 +120,19 @@ def run_backtest(
     return cast(pd.DataFrame, value_bets)
 
 
-def main(args):
+def main(config: Config, mode: str):
     setup_logging()
-    config = load_config(args.config)
-    paths = config["data_paths"]
-    betting_params = config["betting"]
+    paths = config.data_paths
+    betting_params = config.betting
 
-    ev_threshold = betting_params["ev_threshold"]
-    confidence_threshold = betting_params["confidence_threshold"]
+    ev_threshold = betting_params.ev_threshold
+    confidence_threshold = betting_params.confidence_threshold
 
-    log_info(f"Loading model from {paths['model']}...")
-    model = joblib.load(paths["model"])
+    log_info(f"Loading model from {paths.model}...")
+    model = joblib.load(paths.model)
 
-    log_info(f"Loading historical features from {paths['consolidated_features']}...")
-    features_df = pd.read_csv(
-        paths["consolidated_features"], parse_dates=["tourney_date"]
-    )
+    log_info(f"Loading historical features from {paths.consolidated_features}...")
+    features_df = pd.read_csv(paths.consolidated_features, parse_dates=["tourney_date"])
     features_df.rename(
         columns={"market_id": "match_id"},
         inplace=True,
@@ -157,13 +152,13 @@ def main(args):
     ].fillna(0)
 
     market_data_df = None
-    if args.mode == "realistic":
+    if mode == "realistic":
         try:
             log_info(
-                f"Loading clean backtest market data from {paths['backtest_market_data']}..."
+                f"Loading clean backtest market data from {paths.backtest_market_data}..."
             )
             market_data_df = pd.read_csv(
-                paths["backtest_market_data"], parse_dates=["tourney_date"]
+                paths.backtest_market_data, parse_dates=["tourney_date"]
             )
         except FileNotFoundError:
             log_error(
@@ -176,7 +171,7 @@ def main(args):
         model,
         ev_threshold,
         confidence_threshold,
-        args.mode,
+        mode,
         market_data_df,
     )
 
@@ -184,7 +179,7 @@ def main(args):
         log_info("No value bets found for the selected mode.")
         return
 
-    betfair_commission = betting_params.get("betfair_commission", 0.05)
+    betfair_commission = betting_params.betfair_commission
     final_value_bets = calculate_pnl(
         final_value_bets.copy(), commission=betfair_commission
     )
@@ -197,21 +192,7 @@ def main(args):
     log_success(f"Total Profit/Loss: {total_pnl:.2f} units")
     log_success(f"Return on Investment (ROI): {roi:.2f}%")
 
-    output_path = Path(paths["backtest_results"])
+    output_path = Path(paths.backtest_results)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     final_value_bets.to_csv(output_path, index=False)
     log_success(f"Saved final backtest results to {output_path}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run a unified backtest for the tennis model."
-    )
-    parser.add_argument(
-        "mode", choices=["simulation", "realistic"], help="The backtesting mode to run."
-    )
-    parser.add_argument(
-        "--config", default="config.yaml", help="Path to the config file."
-    )
-    cli_args = parser.parse_args()
-    main(cli_args)

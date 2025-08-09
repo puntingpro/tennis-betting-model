@@ -1,5 +1,4 @@
 # src/tennis_betting_model/builders/build_elo_ratings.py
-
 from dataclasses import dataclass, field
 import pandas as pd
 from pathlib import Path
@@ -10,13 +9,14 @@ from collections import defaultdict
 from tennis_betting_model.utils.config_schema import EloConfig, DataPaths
 from tennis_betting_model.utils.common import get_surface
 from tennis_betting_model.utils.logger import log_warning, log_info
+from tennis_betting_model.utils.constants import DEFAULT_ELO_RATING
 
 
 @dataclass
 class EloCalculator:
     k_factor: int
     rating_diff_factor: int
-    initial_rating: int = 1500
+    initial_rating: int = DEFAULT_ELO_RATING
     elo_ratings: dict[str, dict[int, float]] = field(
         default_factory=lambda: defaultdict(dict)
     )

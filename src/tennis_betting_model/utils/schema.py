@@ -1,11 +1,11 @@
 # src/tennis_betting_model/utils/schema.py
-
 import pandas as pd
 import pandera.pandas as pa
 from pandera.typing import Series
 from typing import cast, Optional
 from .logger import log_info, log_error, log_success
 from pathlib import Path
+from .constants import Surface
 
 
 class BetfairMatchLogSchema(pa.DataFrameModel):
@@ -20,7 +20,7 @@ class BetfairMatchLogSchema(pa.DataFrameModel):
     loser_id: Series[int] = pa.Field(coerce=True)
     loser_historical_id: Series[float] = pa.Field(coerce=True, nullable=True)
     loser_name: Series[str] = pa.Field(nullable=True)
-    surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass", "Unknown"])
+    surface: Series[str] = pa.Field(isin=[s.value for s in Surface])
     score: Optional[Series[str]] = pa.Field(nullable=True)
     sets_played: Optional[Series[int]] = pa.Field(nullable=True, coerce=True)
 
@@ -37,7 +37,7 @@ class FinalFeaturesSchema(pa.DataFrameModel):
     market_id: Series[str] = pa.Field(nullable=False)
     tourney_date: Series[pa.DateTime] = pa.Field(nullable=False, coerce=True)
     tourney_name: Series[str] = pa.Field(nullable=True)
-    surface: Series[str] = pa.Field(isin=["Hard", "Clay", "Grass", "Unknown"])
+    surface: Series[str] = pa.Field(isin=[s.value for s in Surface])
     p1_id: Series[int] = pa.Field(coerce=True)
     p2_id: Series[int] = pa.Field(coerce=True)
     p1_rank: Series[float] = pa.Field(nullable=False, coerce=True)

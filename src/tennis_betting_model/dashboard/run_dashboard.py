@@ -1,13 +1,17 @@
+# src/tennis_betting_model/dashboard/run_dashboard.py
+
 import pandas as pd
 import streamlit as st
 import numpy as np
 from typing import cast, Tuple, List, Any
 import datetime
+import plotly.express as px
+from omegaconf import OmegaConf
 
 from tennis_betting_model.utils.logger import setup_logging
-from tennis_betting_model.utils.config import load_config, Config
+from tennis_betting_model.utils.config import validate_config
+from tennis_betting_model.utils.config_schema import Config, DataPaths
 from tennis_betting_model.utils.data_loader import DataLoader
-from tennis_betting_model.utils.config_schema import DataPaths
 from tennis_betting_model.pipeline.simulate_bankroll_growth import (
     simulate_bankroll_growth,
     calculate_max_drawdown,
@@ -30,7 +34,6 @@ def create_summary_table(
         st.warning(f"Data for '{column}' is not available to generate summary.")
         return
 
-    # Use a robust binning method with infinite boundaries to capture all data
     bin_edges = sorted(list(set([-np.inf] + bins + [np.inf])))
 
     df[f"{column}_bucket"] = pd.cut(df[column], bins=bin_edges)
@@ -39,7 +42,6 @@ def create_summary_table(
         .agg(bets=("market_id", "count"), pnl=("pnl", "sum"))
         .reset_index()
     )
-    # Remove empty bins before calculating ROI
     summary = summary[summary["bets"] > 0].copy()
     if summary.empty:
         st.warning(f"No data falls into the defined bins for '{column}'.")
@@ -54,16 +56,18 @@ def create_summary_table(
 
 def run() -> None:
     """Main function to run the enhanced Streamlit dashboard."""
-    st.set_page_config(layout="wide", page_title="Performance Dashboard")
+    st.set_page_config(layout="wide", page_title="PuntingPro Performance Dashboard")
     setup_logging()
 
-    st.title("Performance Dashboard")
+    st.title("🎾 PuntingPro Performance Dashboard")
     st.markdown(
         "An interactive dashboard to analyze backtesting results and betting strategies."
     )
 
     try:
-        config_dict = load_config("config.yaml")
+        # Load config manually, similar to the refactored main.py
+        base_cfg = OmegaConf.load("conf/config.yaml")
+        config_dict = validate_config(base_cfg)
         config = Config(**config_dict)
         analysis_params = config.analysis_params.dict()
         df_full = load_data(config.data_paths)
@@ -120,7 +124,7 @@ def run() -> None:
         st.info("No bets match the current filter criteria.")
         return
 
-    st.header("Performance Overview")
+    st.header("📈 Performance Overview")
     total_bets = len(df)
     total_pnl = df["pnl"].sum()
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
@@ -134,7 +138,7 @@ def run() -> None:
 
     st.divider()
 
-    st.header("Bankroll Growth Simulation")
+    st.header("🏦 Bankroll Growth Simulation")
     sim_col1, sim_col2 = st.columns([1, 3])
 
     with sim_col1:
@@ -176,11 +180,18 @@ def run() -> None:
             kpi_col2.metric("Peak Bankroll", f"${peak_bankroll:,.2f}")
             kpi_col3.metric("Max Drawdown", f"{max_dd:.2%}")
 
-            st.line_chart(simulated_df.set_index("tourney_date")["bankroll"])
+            # Use Plotly for an interactive line chart
+            fig = px.line(
+                simulated_df,
+                x="tourney_date",
+                y="bankroll",
+                title="Bankroll Growth Over Time",
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
 
-    st.header("Performance Breakdown")
+    st.header("📊 Performance Breakdown")
     breakdown_col1, breakdown_col2 = st.columns(2)
 
     with breakdown_col1:
@@ -208,7 +219,7 @@ def run() -> None:
 
     st.divider()
 
-    st.header("Filtered Bet History")
+    st.header("📜 Filtered Bet History")
     st.dataframe(
         df[
             [

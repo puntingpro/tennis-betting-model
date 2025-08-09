@@ -2,9 +2,10 @@
 
 import pandas as pd
 from pathlib import Path
-from thefuzz import process
+from rapidfuzz import process  # Changed import
 from tqdm import tqdm
 import unidecode
+from collections import defaultdict  # Added import
 
 from tennis_betting_model.utils.logger import (
     log_info,
@@ -28,7 +29,7 @@ def get_initial_lastname(name):
 def get_lastname(name):
     """Extracts the last name, e.g., 'Novak Djokovic' -> 'Djokovic'."""
     parts = name.strip().split()
-    return parts[-1] if parts else name
+    return parts[-1] if parts else ""
 
 
 def clean_name(name):
@@ -168,7 +169,7 @@ class PlayerMapper:
         )
 
     def _match_fuzzy(self, tour: str):
-        """Pass 5: Fuzzy Match on the rest."""
+        """Pass 5: Fuzzy Match on the rest, with blocking."""
         if self.unmatched.empty:
             return
 
@@ -176,7 +177,14 @@ class PlayerMapper:
             subset=["historical_name"], keep="first"
         )
         historical_map = unique_historical.set_index("historical_name")["historical_id"]
-        historical_list = historical_map.index.tolist()
+
+        # Create blocks to reduce search space
+        historical_blocks = defaultdict(list)
+        for name in historical_map.index:
+            last_name = get_lastname(name)
+            if last_name:
+                block_key = last_name[0].upper()  # Group by first letter of last name
+                historical_blocks[block_key].append(name)
 
         new_mappings = []
         for betfair_id, row in tqdm(
@@ -188,7 +196,24 @@ class PlayerMapper:
             if not isinstance(betfair_name, str) or not betfair_name.strip():
                 continue
 
-            best_match, score = process.extractOne(betfair_name, historical_list)
+            # Determine which block to search in
+            last_name = get_lastname(betfair_name)
+            if not last_name:
+                continue
+            block_key = last_name[0].upper()
+            candidate_list = historical_blocks.get(block_key)
+
+            if not candidate_list:
+                continue  # No historical players with this initial, skip.
+
+            # Search only within the smaller candidate list
+            # rapidfuzz returns a tuple of (match, score, index)
+            result = process.extractOne(betfair_name, candidate_list)
+            if not result:
+                continue
+
+            best_match, score, _ = result
+
             if score >= self.confidence_threshold:
                 new_mappings.append(
                     {
@@ -214,7 +239,7 @@ def run_create_mapping_file(data_paths: DataPaths, mapping_params: MappingParams
         log_error("Betfair RAW odds file not found. Please run 'prepare-data' first.")
         return
 
-    df_betfair_odds = pd.read_csv(betfair_odds_path)
+    df_betfair_odds = pd.read_csv(betfair_odds_path, low_memory=False)
     betfair_unique_players = (
         df_betfair_odds[["selection_id", "selection_name"]]
         .drop_duplicates()

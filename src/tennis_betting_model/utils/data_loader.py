@@ -56,7 +56,9 @@ class DataLoader:
         log_info("--- Loading All Pipeline Data Sources ---")
         try:
             # Load match data
-            df_matches = pd.read_csv(self.paths.betfair_match_log, low_memory=False)
+            df_matches = pd.read_csv(
+                self.paths.betfair_match_log, low_memory=False, dtype={"match_id": str}
+            )
             df_matches["tourney_date"] = pd.to_datetime(
                 df_matches["tourney_date"], errors="coerce", utc=True
             )
@@ -76,7 +78,6 @@ class DataLoader:
             df_matches["loser_historical_id"] = df_matches[
                 "loser_historical_id"
             ].astype(int)
-            df_matches["match_id"] = df_matches["match_id"].astype(str)
             df_matches = validate_data(
                 df_matches, "betfair_match_log", "Betfair Match Log"
             )
@@ -101,8 +102,7 @@ class DataLoader:
             validate_data(df_rankings, "consolidated_rankings", "Consolidated Rankings")
 
             # Load Elo ratings data
-            df_elo = pd.read_csv(self.paths.elo_ratings)
-            df_elo["match_id"] = df_elo["match_id"].astype(str)
+            df_elo = pd.read_csv(self.paths.elo_ratings, dtype={"match_id": str})
 
             log_success("✅ All data loaded and validated successfully.")
             return (
@@ -125,7 +125,7 @@ class DataLoader:
         """Loads and prepares the backtest results data specifically for the dashboard."""
         try:
             results_path = Path(self.paths.backtest_results)
-            df = pd.read_csv(results_path)
+            df = pd.read_csv(results_path, dtype={"market_id": str})
             df["tourney_date"] = pd.to_datetime(df["tourney_date"])
 
             if "pnl" not in df.columns:
@@ -137,10 +137,10 @@ class DataLoader:
             features_path = Path(self.paths.consolidated_features)
             if features_path.exists():
                 df_features = pd.read_csv(
-                    features_path, usecols=["market_id", "rank_diff"]
+                    features_path,
+                    usecols=["market_id", "rank_diff"],
+                    dtype={"market_id": str},
                 )
-                df["market_id"] = df["market_id"].astype(str)
-                df_features["market_id"] = df_features["market_id"].astype(str)
                 df = pd.merge(df, df_features, on="market_id", how="left")
             else:
                 df["rank_diff"] = 0

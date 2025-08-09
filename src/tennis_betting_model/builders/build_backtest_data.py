@@ -36,7 +36,7 @@ def main(paths: DataPaths):
             log_warning("Raw odds or player map is empty. Cannot build backtest data.")
             pd.DataFrame(
                 columns=[
-                    "market_id",
+                    "match_id",
                     "tourney_date",
                     "p1_id",
                     "p2_id",
@@ -61,7 +61,7 @@ def main(paths: DataPaths):
             )
             pd.DataFrame(
                 columns=[
-                    "market_id",
+                    "match_id",
                     "tourney_date",
                     "p1_id",
                     "p2_id",
@@ -86,7 +86,7 @@ def main(paths: DataPaths):
             )
             pd.DataFrame(
                 columns=[
-                    "market_id",
+                    "match_id",
                     "tourney_date",
                     "p1_id",
                     "p2_id",
@@ -124,11 +124,11 @@ def main(paths: DataPaths):
                 "historical_id_p2": "p2_id",
                 "pp_wap_p1": "p1_odds",
                 "pp_wap_p2": "p2_odds",
+                "market_id": "match_id",  # FIX: Standardize column name before saving
             },
             inplace=True,
         )
 
-        # --- ENHANCEMENT: Calculate implied probability and market overround ---
         market_data["p1_implied_prob"] = 1 / market_data["p1_odds"]
         market_data["p2_implied_prob"] = 1 / market_data["p2_odds"]
         market_data["book_margin"] = (
@@ -138,7 +138,7 @@ def main(paths: DataPaths):
         market_data["winner"] = (market_data["result"] == "WINNER").astype(int)
 
         final_cols = [
-            "market_id",
+            "match_id",
             "tourney_date",
             "p1_id",
             "p2_id",

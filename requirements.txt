@@ -1,5 +1,6 @@
 # --- Core Application ---
 pandas
+polars
 xgboost
 optuna
 joblib
@@ -13,11 +14,14 @@ thefuzz
 python-Levenshtein
 scikit-learn
 unidecode
+hydra-core
+omegaconf
 
 # --- Analysis & Visualization ---
 matplotlib
 seaborn
 streamlit
+plotly
 
 # --- Development & Testing ---
 flake8

@@ -17,13 +17,13 @@ from tennis_betting_model.utils.schema import validate_data
 def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
     """
     Loads all historical ATP/WTA match files to create a lookup table for tournament names
-    based on the date and players involved. Skips files with incompatible schemas.
+    based on the date and players involved.
+    Skips files with incompatible schemas.
     """
     log_info("Creating historical match lookup for tournament names...")
     raw_data_dir = Path(paths.raw_data_dir)
     all_matches = []
 
-    # --- ENHANCEMENT: Add 'score' to the columns being loaded ---
     use_cols = ["tourney_name", "tourney_date", "winner_id", "loser_id", "score"]
 
     for tour in ["atp", "wta"]:
@@ -57,7 +57,6 @@ def _create_historical_match_lookup(paths: DataPaths) -> pd.DataFrame:
     df_historical["p1_id"] = df_historical[["winner_id", "loser_id"]].min(axis=1)
     df_historical["p2_id"] = df_historical[["winner_id", "loser_id"]].max(axis=1)
 
-    # --- ENHANCEMENT: Keep 'score' in the lookup table ---
     lookup = df_historical[["date", "p1_id", "p2_id", "tourney_name", "score"]].copy()
     lookup.rename(columns={"tourney_name": "historical_tourney_name"}, inplace=True)
 
@@ -80,11 +79,17 @@ def main(paths: DataPaths):
         )
         return
 
+    # Load without dtype to avoid mypy issues
     df_raw = pd.read_csv(raw_odds_path, parse_dates=["tourney_date"])
+
+    # Explicitly convert columns to string after loading
+    df_raw["market_id"] = df_raw["market_id"].astype(str)
+    df_raw["selection_id"] = df_raw["selection_id"].astype(str)
+
     df_raw["tourney_date"] = pd.to_datetime(df_raw["tourney_date"], utc=True)
 
     df_map = pd.read_csv(
-        map_path, dtype={"betfair_id": "int64", "historical_id": "Int64"}
+        map_path, dtype={"betfair_id": "str", "historical_id": "Int64"}
     )
 
     log_info("Enriching summary data with historical IDs...")
@@ -153,7 +158,6 @@ def main(paths: DataPaths):
 
     match_log_df["surface"] = match_log_df["tourney_name"].apply(get_surface)
 
-    # --- ENHANCEMENT: Add a 'sets_played' column from the score ---
     match_log_df["sets_played"] = (
         match_log_df["score"].str.split().str.len().fillna(0).astype(int)
     )
@@ -200,7 +204,6 @@ def main(paths: DataPaths):
         if col not in match_log_df.columns:
             match_log_df[col] = None
 
-    # Validate the data before saving
     validated_df = validate_data(
         match_log_df[final_cols], "betfair_match_log", "Betfair Match Log"
     )

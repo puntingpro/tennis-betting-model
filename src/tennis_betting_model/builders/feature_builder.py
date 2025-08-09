@@ -112,7 +112,11 @@ class FeatureBuilder:
             p1_matches_last_14,
             p1_sets_last_7,
             p1_sets_last_14,
-        ) = get_player_stats_optimized(self.player_match_df, p1_id, surface, match_date)
+            p1_rolling_win_perc_20,
+            p1_rolling_win_perc_50,
+        ) = get_player_stats_optimized(
+            self.player_match_df, p1_id, surface, match_date, p2_info.get("hand", "U")
+        )
         (
             p2_win_perc,
             p2_surface_win_perc,
@@ -121,7 +125,11 @@ class FeatureBuilder:
             p2_matches_last_14,
             p2_sets_last_7,
             p2_sets_last_14,
-        ) = get_player_stats_optimized(self.player_match_df, p2_id, surface, match_date)
+            p2_rolling_win_perc_20,
+            p2_rolling_win_perc_50,
+        ) = get_player_stats_optimized(
+            self.player_match_df, p2_id, surface, match_date, p1_info.get("hand", "U")
+        )
 
         h2h_p1_wins, h2h_p2_wins = get_h2h_stats_optimized(
             self.h2h_df, p1_id, p2_id, match_date, surface
@@ -149,7 +157,6 @@ class FeatureBuilder:
             "p2_win_perc": p2_win_perc,
             "p1_surface_win_perc": p1_surface_win_perc,
             "p2_surface_win_perc": p2_surface_win_perc,
-            # --- FIX: Add p1_form and p2_form back to the dictionary ---
             "p1_form": p1_form,
             "p2_form": p2_form,
             "p1_matches_last_7_days": p1_matches_last_7,
@@ -171,5 +178,9 @@ class FeatureBuilder:
             "book_margin": book_margin,
             "p1_hand": p1_info.get("hand", "U"),
             "p2_hand": p2_info.get("hand", "U"),
+            "p1_rolling_win_perc_20": p1_rolling_win_perc_20,
+            "p2_rolling_win_perc_20": p2_rolling_win_perc_20,
+            "p1_rolling_win_perc_50": p1_rolling_win_perc_50,
+            "p2_rolling_win_perc_50": p2_rolling_win_perc_50,
         }
         return feature_dict

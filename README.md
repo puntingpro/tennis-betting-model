@@ -2,7 +2,6 @@
 
 ## 📈 Overview
 **tennis-betting-model** is an automated trading bot designed to identify and execute value bets on the Betfair Tennis exchange. The system uses historical data to build features, train a predictive model, and find profitable betting opportunities. The bot's strategy is designed to place bets pre-play with a "Keep" persistence type, allowing the bet to remain active after the market goes in-play.
-
 ---
 
 ## 🛠️ Technology Stack
@@ -29,13 +28,13 @@
 │   └── utils/                # Utility functions (logging, config, etc.)
 ├── tests/                      # Unit and integration tests
 ├── main.py                     # Main CLI entry point for all commands
-└── config.yaml                 # Configuration file for paths, parameters, etc.
+└── conf/config.yaml            # Single, consolidated configuration file
 ```
 
 ---
 
 ## ⚙️ Project Pipeline Commands
-This is the complete sequence of commands for the recommended workflow. These should be run from the project's root directory. The entire build and backtest process is automated via the `.github/workflows/build_and_backtest.yml` workflow.
+This is the complete sequence of commands for the recommended workflow. These should be run from the project's root directory.
 
 ### Part 1: Initial Setup & Data Processing
 This workflow prepares all raw data sources, consolidates them, and creates the necessary mappings.
@@ -43,17 +42,13 @@ This workflow prepares all raw data sources, consolidates them, and creates the 
 **Step 1: Prepare Raw Data**
 Consolidates raw player data, historical rankings, and Betfair summary odds files into processed CSVs.
 ```bash
-python main.py prepare-data
+python main.py command=prepare-data
 ```
 
-**Step 2: Create Player Map (Review Recommended)**
+**Step 2: Create Player Map**
 Generates a mapping file to link Betfair player IDs with historical player IDs.
 ```bash
-python main.py create-player-map
-```
-To visually review and correct any ambiguous mappings, launch the interactive tool:
-```bash
-python main.py analysis review-mappings
+python main.py command=create-player-map
 ```
 
 ### Part 2: Model Training & Backtesting
@@ -62,21 +57,21 @@ This workflow builds the features, trains the model, and runs a historical backt
 **Step 3: Build All Features & Backtest Data**
 Runs the full data enrichment pipeline, including creating the match log, calculating Elo ratings, building features, and preparing the data for a realistic backtest.
 ```bash
-python main.py build
+python main.py command=build
 ```
 
 **Step 4: Train the Model**
 Trains the LightGBM model using the features generated in the previous step.
 ```bash
-python main.py model
+python main.py command=model
 ```
 
 **Step 5: Run Backtest & Generate Analysis**
-Runs a historical backtest using the trained model and realistic market odds. It then generates analysis reports on the results.
+Runs a historical backtest using the trained model and realistic market odds, then generates analysis reports.
 ```bash
-python main.py backtest realistic
-python main.py analysis summarize-tournaments
-python main.py analysis plot-leaderboard
+python main.py command=backtest mode=realistic
+python main.py command=analysis/summarize-tournaments
+python main.py command=analysis/plot-leaderboard
 ```
 
 ### Part 3: Live Trading & Analysis
@@ -84,14 +79,16 @@ python main.py analysis plot-leaderboard
 **Step 6: 📊 Launch the Interactive Dashboard**
 Launch a Streamlit dashboard to interactively analyze the latest backtest results and simulate staking strategies.
 ```bash
-python main.py dashboard
+python main.py command=dashboard
 ```
 
 **Step 7: ⚡ Run the Live Trading Bot**
-Run the live betting bot using the real-time Betfair Stream API. It is highly recommended to run in `--dry-run` mode first to ensure everything is working correctly without risking real money. This command is designed to be run as a long-running process on a server or VPS.
+Run the live betting bot using the real-time Betfair Stream API. It is highly recommended to run in dry-run mode first.
 ```bash
 # Run in dry-run mode (no real money)
-python main.py stream --dry-run
+python main.py command=stream dry_run=true
+```
 ```bash
 # Run in LIVE mode (places real bets)
-python main.py stream
+python main.py command=stream
+```

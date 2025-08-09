@@ -3,6 +3,7 @@ from setuptools import setup, find_packages
 # A list of dependencies for the project
 install_deps = [
     "pandas",
+    "polars",
     "xgboost",
     "optuna",
     "joblib",
@@ -13,9 +14,12 @@ install_deps = [
     "orjson",
     "bz2file",
     "thefuzz",
+    "rapidfuzz",  # Added new dependency
     "python-Levenshtein",
     "scikit-learn",
     "unidecode",
+    "hydra-core",
+    "omegaconf",
     "matplotlib",
     "seaborn",
     "streamlit",
@@ -30,12 +34,12 @@ install_deps = [
     "pre-commit",
     "google-cloud-storage",
     "lightgbm",
-    "typer[all]",  # --- FIX: Add typer with rich support ---
+    "typer[all]",
 ]
 
 setup(
     name="tennis_betting_model",
-    version="1.1.0",
+    version="1.3.0",
     author="Luca Panozzo",
     author_email="luca.panozzo13@gmail.com",
     description="An automated trading bot for the Betfair Tennis exchange.",

@@ -31,7 +31,15 @@ def main(paths: DataPaths):
         return
 
     log_info(f"Found {len(summary_files)} summary files to consolidate.")
-    df_list = [pd.read_csv(f) for f in summary_files]
+
+    df_list = []
+    for f in summary_files:
+        # Load without dtype, then explicitly convert types to satisfy mypy
+        df = pd.read_csv(f)
+        df["market_id"] = df["market_id"].astype(str)
+        df["selection_id"] = df["selection_id"].astype(str)
+        df_list.append(df)
+
     combined_df = pd.concat(df_list, ignore_index=True)
 
     if "event_date" not in combined_df.columns:

@@ -16,6 +16,8 @@ from ..pipeline.value_finder import MarketProcessor
 from ..utils.common import get_tournament_category
 from ..utils.logger import log_info, log_success, log_warning
 from ..utils.config_schema import Betting, LiveTradingParams
+from ..utils.constants import BetSide
+from ..utils.risk_management import RiskManager
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,12 @@ class TennisValueStrategy(BaseStrategy):
         self.db_path = Path(processed_bets_log_path)
         self._init_db()
         self.processed_selections = self._load_processed_selections()
+
+        # Initialize the Risk Manager
+        self.risk_manager = RiskManager(
+            max_daily_loss=50.0,  # Example: stop trading if down $50 in a day
+            max_exposure=200.0,  # Example: don't have more than $200 at risk at once
+        )
 
         logger.info(
             f"TennisValueStrategy initialized. Dry Run: {self.dry_run}. "
@@ -130,7 +138,7 @@ class TennisValueStrategy(BaseStrategy):
         live_bankroll = self._get_live_bankroll() or self.fallback_bankroll
 
         if live_bankroll < 10:
-            logger.warning(
+            log_warning(
                 f"Live bankroll is very low (${live_bankroll:.2f}). Pausing placements."
             )
             return
@@ -139,12 +147,11 @@ class TennisValueStrategy(BaseStrategy):
             selection_key = f"{market.market_id}-{bet['selection_id']}"
             if selection_key in self.processed_selections:
                 continue
-            if (
-                market.blotter.selection_exposure(
-                    self, (market.market_id, bet["selection_id"], 0)
-                )
-                != 0
-            ):
+
+            current_exposure = market.blotter.selection_exposure(
+                self, (market.market_id, bet["selection_id"], 0)
+            )
+            if current_exposure != 0:
                 continue
 
             log_success(
@@ -157,6 +164,10 @@ class TennisValueStrategy(BaseStrategy):
                 desired_kelly_fraction, self.max_kelly_stake_fraction
             )
             stake = live_bankroll * capped_kelly_fraction
+
+            # Risk management check
+            if not self.risk_manager.can_place_bet(current_exposure, stake):
+                continue
 
             if stake < 0.03:
                 log_warning(
@@ -179,7 +190,7 @@ class TennisValueStrategy(BaseStrategy):
                 strategy=self,
             )
             order = trade.create_order(
-                side="BACK",
+                side=BetSide.BACK.value,
                 order_type=LimitOrder(
                     price=bet["odds"], size=round(stake, 2), persistence_type="KEEP"
                 ),
@@ -196,3 +207,7 @@ class TennisValueStrategy(BaseStrategy):
             ):
                 log_warning(f"Order {order.id} is stale, cancelling.")
                 market.cancel_order(order)
+
+            # Update P&L for settled orders
+            if order.status == OrderStatus.EXECUTION_COMPLETE and order.profit != 0:
+                self.risk_manager.update_pnl(order.profit)

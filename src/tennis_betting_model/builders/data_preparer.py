@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import pandas as pd
+import polars as pl
 import glob
 
 from tennis_betting_model.utils.logger import (
@@ -27,22 +28,29 @@ def consolidate_player_attributes(paths: DataPaths):
     log_info("Loading ATP and WTA player attribute files...")
     player_cols = ["player_id", "first_name", "last_name", "hand", "dob", "country_ioc"]
 
-    df_atp = pd.read_csv(
-        atp_players_path,
-        header=None,
-        encoding="latin-1",
-        usecols=range(6),
-        names=player_cols,
-        dtype={"player_id": str, "dob": str},
-    )
-    df_wta = pd.read_csv(
-        wta_players_path,
-        header=None,
-        encoding="latin-1",
-        usecols=range(6),
-        names=player_cols,
-        dtype={"player_id": str, "dob": str},
-    )
+    try:
+        df_atp = pd.read_csv(
+            atp_players_path,
+            header=None,
+            encoding="latin-1",
+            usecols=range(6),
+            names=player_cols,
+            dtype={"player_id": str, "dob": str},
+        )
+        df_wta = pd.read_csv(
+            wta_players_path,
+            header=None,
+            encoding="latin-1",
+            usecols=range(6),
+            names=player_cols,
+            dtype={"player_id": str, "dob": str},
+        )
+    except pd.errors.EmptyDataError:
+        log_error("One of the player attribute files is empty. Aborting.")
+        return
+    except ValueError as e:
+        log_error(f"Error reading player attribute files: {e}. Check the file format.")
+        return
 
     log_info("Combining files and removing duplicate player entries...")
     combined_df = pd.concat([df_atp, df_wta], ignore_index=True)
@@ -56,7 +64,6 @@ def consolidate_player_attributes(paths: DataPaths):
     combined_df.to_csv(output_path, index=False)
     log_success(f"Consolidated {len(combined_df)} players into {output_path}")
 
-    # Validate the final dataframe
     validate_data(combined_df, "raw_players", "Consolidated Player Attributes")
 
 
@@ -73,30 +80,49 @@ def consolidate_rankings(paths: DataPaths):
     df_list = []
     for f in all_files:
         if Path(f).stat().st_size > 0:
-            df_list.append(pd.read_csv(f, header=None, dtype=str))
+            try:
+                # Read all columns as string to avoid parsing errors
+                # FIX: Removed the restrictive `dtypes` parameter to handle files with 4 or 5 columns
+                df = pl.read_csv(f, has_header=False)
+                # Filter out header rows
+                df = df.filter(pl.col("column_1") != "ranking_date")
 
-    combined_df = pd.concat(df_list, ignore_index=True)
+                if df.shape[1] == 4:
+                    df.columns = ["ranking_date", "rank", "player", "points"]
+                    df = df.with_columns(pl.lit(None, dtype=pl.Utf8).alias("tours"))
+                elif df.shape[1] == 5:
+                    df.columns = ["ranking_date", "rank", "player", "points", "tours"]
+                else:
+                    log_error(
+                        f"Skipping rankings file with incorrect number of columns: {f}"
+                    )
+                    continue
+                df_list.append(df)
+            except Exception as e:
+                log_error(f"Could not process file: {f}. Error: {e}")
 
-    if combined_df.shape[1] == 4:
-        combined_df.columns = pd.Index(["ranking_date", "rank", "player", "points"])
-    elif combined_df.shape[1] == 5:
-        combined_df.columns = pd.Index(
-            ["ranking_date", "rank", "player", "points", "tours"]
-        )
+    if not df_list:
+        log_error("No valid ranking files could be loaded.")
+        return
 
-    combined_df["ranking_date"] = pd.to_datetime(
-        combined_df["ranking_date"], errors="coerce", format="%Y%m%d", utc=True
-    )
-    combined_df["rank"] = pd.to_numeric(combined_df["rank"], errors="coerce")
-    combined_df["player"] = pd.to_numeric(combined_df["player"], errors="coerce")
-    combined_df.dropna(subset=["ranking_date", "rank", "player"], inplace=True)
+    combined_df = pl.concat(df_list)
 
-    combined_df = combined_df.astype({"rank": int, "player": int})
+    combined_df = combined_df.with_columns(
+        [
+            pl.col("ranking_date")
+            .str.to_datetime("%Y%m%d")
+            .dt.replace_time_zone("UTC"),
+            pl.col("rank").cast(pl.Int64, strict=False),
+            pl.col("player").cast(pl.Int64, strict=False),
+        ]
+    ).drop_nulls(subset=["ranking_date", "rank", "player"])
 
-    combined_df.sort_values(by=["ranking_date", "rank"], inplace=True)
+    combined_df = combined_df.sort(by=["ranking_date", "rank"])
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    combined_df.to_csv(output_path, index=False)
+    combined_df.write_csv(output_path)
     log_success(f"Consolidated {len(combined_df)} ranking records into {output_path}")
 
-    # Validate the final dataframe
-    validate_data(combined_df, "consolidated_rankings", "Consolidated Rankings")
+    validate_data(
+        combined_df.to_pandas(), "consolidated_rankings", "Consolidated Rankings"
+    )

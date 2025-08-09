@@ -1,32 +1,35 @@
 # src/tennis_betting_model/builders/build_player_features.py
 import pandas as pd
-from tqdm import tqdm
 from pathlib import Path
-from typing import List, Dict, Any
+from tqdm import tqdm
 
-from tennis_betting_model.utils.config import load_config, Config
-from tennis_betting_model.utils.data_loader import DataLoader
-from tennis_betting_model.utils.logger import (
+from src.tennis_betting_model.utils.config_schema import Config
+from src.tennis_betting_model.utils.data_loader import DataLoader
+from src.tennis_betting_model.utils.logger import (
     log_info,
     log_success,
     setup_logging,
     log_error,
 )
-from tennis_betting_model.utils.schema import validate_data
-from tennis_betting_model.builders.feature_builder import FeatureBuilder
+from src.tennis_betting_model.utils.schema import validate_data
+from src.tennis_betting_model.builders.feature_logic import get_h2h_stats_optimized
+from src.tennis_betting_model.builders.vectorized_features import (
+    build_vectorized_features,
+)
+from src.tennis_betting_model.utils.common import get_most_recent_ranking
 
 
-def main(args):
-    """Main workflow for building all player features using a stateful, chronological approach."""
+def main(config: Config):
+    """Main workflow for building all player features using a high-performance, vectorized approach."""
     setup_logging()
-    config = Config(**load_config(args.config))
+
     data_loader = DataLoader(config.data_paths)
 
     try:
         (
             df_matches,
             df_rankings,
-            _,
+            df_players,
             df_elo,
             player_info_lookup,
         ) = data_loader.load_all_pipeline_data()
@@ -34,84 +37,134 @@ def main(args):
         log_info(
             f"Loading backtest market data from {config.data_paths.backtest_market_data}..."
         )
-        df_market_data = pd.read_csv(config.data_paths.backtest_market_data)
-        df_market_data["match_id"] = df_market_data["market_id"].astype(str)
+        df_market_data = pd.read_csv(
+            config.data_paths.backtest_market_data, dtype={"match_id": str}
+        )
 
-        # --- FIX: Include 'p1_id' in the merge and update fillna syntax ---
+        # Add player IDs to the main matches df to ensure correct player alignment (p1_id < p2_id)
         df_matches = pd.merge(
             df_matches,
-            df_market_data[["match_id", "p1_id", "p1_odds", "p2_odds"]],
+            df_market_data[["match_id", "p1_id", "p2_id"]],
             on="match_id",
-            how="left",
+            how="inner",
         )
-        df_matches["p1_odds"] = df_matches["p1_odds"].fillna(0)
-        df_matches["p2_odds"] = df_matches["p2_odds"].fillna(0)
 
     except FileNotFoundError:
         log_error(
-            "A required data file was not found. Please run 'prepare-data' and create the necessary files."
+            "A required data file was not found. Please run 'prepare-data' first."
         )
         return
 
-    log_info("--- Starting High-Performance Feature Engineering ---")
-    df_matches = df_matches.sort_values("tourney_date").reset_index(drop=True)
+    log_info("--- Starting High-Performance Vectorized Feature Engineering ---")
 
-    feature_builder = FeatureBuilder(
-        player_info_lookup=player_info_lookup,
-        df_rankings=df_rankings,
-        df_matches=df_matches,
-        df_elo=df_elo,
-        elo_config=config.elo_config,
+    # 1. Build core player-specific features using the new vectorized function
+    df_features = build_vectorized_features(df_matches)
+
+    # 2. Merge match-specific features
+    log_info("Merging Elo ratings...")
+    df_features = df_features.merge(
+        df_elo[["match_id", "p1_elo", "p2_elo"]], on="match_id", how="left"
     )
 
-    all_features: List[Dict[str, Any]] = []
+    df_features["p1_elo"].fillna(config.elo_config.initial_rating, inplace=True)
+    df_features["p2_elo"].fillna(config.elo_config.initial_rating, inplace=True)
 
-    log_info(f"Generating features for {len(df_matches)} historical matches...")
-    for row in tqdm(
-        df_matches.itertuples(),
-        total=len(df_matches),
-        desc="Building Historical Features",
-    ):
-        p1_id = min(row.winner_historical_id, row.loser_historical_id)
-        p2_id = max(row.winner_historical_id, row.loser_historical_id)
+    df_features["elo_diff"] = df_features["p1_elo"] - df_features["p2_elo"]
 
-        if p1_id == p2_id:
-            continue
+    log_info("Calculating Head-to-Head stats...")
+    h2h_df = df_matches.copy()
+    h2h_df["p1_id_h2h"] = h2h_df[["winner_historical_id", "loser_historical_id"]].min(
+        axis=1
+    )
+    h2h_df["p2_id_h2h"] = h2h_df[["winner_historical_id", "loser_historical_id"]].max(
+        axis=1
+    )
+    h2h_df = h2h_df.set_index(["p1_id_h2h", "p2_id_h2h"]).sort_index()
 
-        if row.p1_id == p1_id:
-            p1_odds = row.p1_odds
-            p2_odds = row.p2_odds
-        else:
-            p1_odds = row.p2_odds
-            p2_odds = row.p1_odds
+    tqdm.pandas(desc="Calculating H2H Stats")
+    h2h_stats = df_features.progress_apply(  # type: ignore
+        lambda row: get_h2h_stats_optimized(
+            h2h_df, row["p1_id"], row["p2_id"], row["tourney_date"], row["surface"]
+        ),
+        axis=1,
+    )
+    df_features[["h2h_surface_p1_wins", "h2h_surface_p2_wins"]] = pd.DataFrame(
+        h2h_stats.tolist(), index=h2h_stats.index
+    )
 
-        features = feature_builder.build_features(
-            p1_id=p1_id,
-            p2_id=p2_id,
-            surface=row.surface,
-            match_date=row.tourney_date,
-            match_id=row.match_id,
-            p1_odds=p1_odds,
-            p2_odds=p2_odds,
+    log_info("Adding final features (ranks, odds, etc.)...")
+
+    # Correctly look up the most recent rank for each player at match time
+    tqdm.pandas(desc="Looking up Player 1 Ranks")
+    df_features["p1_rank"] = df_features.progress_apply(lambda row: get_most_recent_ranking(df_rankings, row["p1_id"], row["tourney_date"], config.elo_config.default_player_rank), axis=1)  # type: ignore
+
+    tqdm.pandas(desc="Looking up Player 2 Ranks")
+    df_features["p2_rank"] = df_features.progress_apply(lambda row: get_most_recent_ranking(df_rankings, row["p2_id"], row["tourney_date"], config.elo_config.default_player_rank), axis=1)  # type: ignore
+    df_features["rank_diff"] = df_features["p1_rank"] - df_features["p2_rank"]
+
+    # Merge odds info from backtest data
+    df_features = df_features.merge(
+        df_market_data[["match_id", "p1_odds", "p2_odds"]], on="match_id", how="left"
+    )
+    df_features["p1_implied_prob"] = 1 / df_features["p1_odds"]
+    df_features["p2_implied_prob"] = 1 / df_features["p2_odds"]
+    df_features["book_margin"] = (
+        df_features["p1_implied_prob"] + df_features["p2_implied_prob"]
+    ) - 1
+
+    for col in ["p1_implied_prob", "p2_implied_prob", "book_margin"]:
+        df_features[col].fillna(0, inplace=True)
+
+    # Add winner column for model training
+    df_features["winner"] = (
+        df_features["winner_historical_id"] == df_features["p1_id"]
+    ).astype(int)
+
+    # Rename columns to their final schema names
+    df_features.rename(
+        columns={"p1_form_10": "p1_form", "p2_form_10": "p2_form"}, inplace=True
+    )
+
+    # Fatigue diff features
+    df_features["fatigue_diff_7_days"] = (
+        df_features["p1_matches_last_7_days"] - df_features["p2_matches_last_7_days"]
+    )
+    df_features["fatigue_diff_14_days"] = (
+        df_features["p1_matches_last_14_days"] - df_features["p2_matches_last_14_days"]
+    )
+    df_features["fatigue_sets_diff_7_days"] = (
+        df_features["p1_sets_played_last_7_days"]
+        - df_features["p2_sets_played_last_7_days"]
+    )
+    df_features["fatigue_sets_diff_14_days"] = (
+        df_features["p1_sets_played_last_14_days"]
+        - df_features["p2_sets_played_last_14_days"]
+    )
+
+    # Merge hand info and clean up merge artifacts ('player_id_x', 'player_id_y')
+    df_features = (
+        df_features.merge(
+            df_players[["player_id", "hand"]],
+            left_on="p1_id",
+            right_on="player_id",
+            how="left",
         )
+        .rename(columns={"hand": "p1_hand"})
+        .drop(columns=["player_id"])
+    )
 
-        features["winner"] = 1 if p1_id == row.winner_historical_id else 0
-        features["tourney_name"] = row.tourney_name
-        features["tourney_date"] = row.tourney_date
-        features["surface"] = row.surface
+    df_features = (
+        df_features.merge(
+            df_players[["player_id", "hand"]],
+            left_on="p2_id",
+            right_on="player_id",
+            how="left",
+        )
+        .rename(columns={"hand": "p2_hand"})
+        .drop(columns=["player_id"])
+    )
 
-        all_features.append(features)
-
-    if not all_features:
-        log_error("No features were generated. The resulting DataFrame is empty.")
-        return
-
-    final_df = pd.DataFrame(all_features)
-
-    elo_cols = ["p1_elo", "p2_elo", "elo_diff"]
-    for col in elo_cols:
-        final_df[col] = pd.to_numeric(final_df[col], errors="coerce")
-        final_df[col] = final_df[col].fillna(config.elo_config.initial_rating)
+    final_df = df_features.rename(columns={"match_id": "market_id"})
 
     validated_features = validate_data(final_df, "final_features", "Final Feature Set")
 

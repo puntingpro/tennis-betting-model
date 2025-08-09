@@ -2,7 +2,7 @@
 
 import pandas as pd
 from pathlib import Path
-from tennis_betting_model.utils.config import load_config
+from tennis_betting_model.utils.config_schema import Config
 from tennis_betting_model.utils.logger import setup_logging, log_info, log_error
 from tennis_betting_model.utils.betting_math import calculate_pnl
 
@@ -17,6 +17,7 @@ def print_report(df: pd.DataFrame, title: str):
 
     total_bets = len(df_report)
     total_pnl = df_report["pnl"].sum()
+
     roi = (total_pnl / total_bets) * 100 if total_bets > 0 else 0
     win_rate = (df_report["winner"].sum() / total_bets) * 100 if total_bets > 0 else 0
     avg_odds = df_report["odds"].mean()
@@ -31,17 +32,16 @@ def print_report(df: pd.DataFrame, title: str):
     print("-" * 50)
 
 
-def main_cli(args):
+def main_cli(config: Config):
     """Main CLI entrypoint for analyzing backtest profitability from config."""
     setup_logging()
-    config = load_config(args.config)
-    paths = config["data_paths"]
-    strategies = config.get("analysis_strategies", [])
+    paths = config.data_paths
+    strategies = config.analysis_strategies
 
     log_info("--- Running Definitive Strategy Analysis Report ---")
 
     try:
-        backtest_results_path = Path(paths["backtest_results"])
+        backtest_results_path = Path(paths.backtest_results)
         log_info(f"Loading backtest data from {backtest_results_path}...")
         df = pd.read_csv(backtest_results_path)
     except FileNotFoundError:
@@ -52,10 +52,12 @@ def main_cli(args):
     print_report(df, "Overall Performance (All Value Bets)")
 
     if not strategies:
-        log_error("No strategies found in config.yaml under 'analysis_strategies'.")
+        log_error("No strategies found in config under 'analysis_strategies'.")
         return
 
-    for strategy in strategies:
+    # CHANGED: Iterate over the dictionary's values
+    for strategy_model in strategies.values():
+        strategy = strategy_model.dict()
         name = strategy.get("name", "Unnamed Strategy")
         min_odds = strategy.get("min_odds", 0.0)
         max_odds = strategy.get("max_odds", 1000.0)
@@ -67,7 +69,3 @@ def main_cli(args):
             & (df["expected_value"] >= min_ev)
         ]
         print_report(strategy_df, f"Strategy: {name}")
-
-
-# --- REFACTOR: Redundant __main__ block removed.
-# This script is now only callable via the main.py entrypoint.

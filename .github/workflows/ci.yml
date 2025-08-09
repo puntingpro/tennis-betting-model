@@ -26,16 +26,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
 
-    # --- REFACTOR: Consolidated dependency installation ---
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install . # Installs package from setup.py and its dependencies
+        pip install -r requirements.txt
+        pip install .
 
-    # --- REFACTOR: Replaced flake8 with a single ruff command ---
     - name: Run linter and type checker
       run: |
-        # Ruff handles linting, complexity, and line length checks
         ruff check src/tennis_betting_model/ tests/
         mypy src/tennis_betting_model/
 

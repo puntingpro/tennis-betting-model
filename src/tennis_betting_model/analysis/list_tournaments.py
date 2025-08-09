@@ -1,35 +1,33 @@
 # src/tennis_betting_model/analysis/list_tournaments.py
 
-import argparse
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 
-from tennis_betting_model.utils.config import load_config
-from tennis_betting_model.utils.logger import setup_logging, log_info, log_error
+from src.tennis_betting_model.utils.config_schema import Config
+from src.tennis_betting_model.utils.logger import setup_logging, log_info, log_error
 
 
-def main_cli(args: argparse.Namespace) -> None:
+def main_cli(config: Config, year: Optional[int] = None) -> None:
     """
     Main CLI entrypoint for listing unique tournament names from the match log.
     """
     setup_logging()
-    config = load_config(args.config)
-    paths = config["data_paths"]
+    paths = config.data_paths
 
     try:
-        match_log_path = Path(paths["betfair_match_log"])
+        match_log_path = Path(paths.betfair_match_log)
         log_info(f"Loading match log from {match_log_path}...")
         df = pd.read_csv(match_log_path, parse_dates=["tourney_date"])
 
-        if args.year:
-            log_info(f"Filtering for year: {args.year}")
-            df = df[df["tourney_date"].dt.year == args.year]
+        if year:
+            log_info(f"Filtering for year: {year}")
+            df = df[df["tourney_date"].dt.year == year]
 
         if df.empty:
             log_error("No tournament data found for the specified criteria.")
             return
 
-        # FIX: Convert all unique names to strings before sorting to handle mixed types
         unique_tournaments = sorted([str(name) for name in df["tourney_name"].unique()])
 
         log_info(f"Found {len(unique_tournaments)} unique tournaments:")
