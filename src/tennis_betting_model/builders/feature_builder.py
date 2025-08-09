@@ -5,7 +5,9 @@ from tennis_betting_model.utils.config_schema import EloConfig
 
 from tennis_betting_model.builders.feature_logic import (
     get_h2h_stats_optimized,
-    # get_player_stats_optimized, # ERROR: This function was removed from feature_logic.py
+    get_win_percentages,
+    get_recent_form,
+    get_fatigue_features,
 )
 
 
@@ -105,36 +107,36 @@ class FeatureBuilder:
             p2_elo = self.elo_config.initial_rating
 
         # --- FIX START ---
-        # The function `get_player_stats_optimized` was removed from `feature_logic.py`, causing an ImportError.
-        # The following lines are placeholders to allow the build to pass.
-        # The original logic needs to be restored for the live pipeline to function correctly.
-        (
-            p1_win_perc,
-            p1_surface_win_perc,
-            p1_form,
-            p1_matches_last_7,
-            p1_matches_last_14,
-            p1_sets_last_7,
-            p1_sets_last_14,
-            p1_rolling_win_perc_20,
-            p1_rolling_win_perc_50,
-        ) = (0.0, 0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0)
-        (
-            p2_win_perc,
-            p2_surface_win_perc,
-            p2_form,
-            p2_matches_last_7,
-            p2_matches_last_14,
-            p2_sets_last_7,
-            p2_sets_last_14,
-            p2_rolling_win_perc_20,
-            p2_rolling_win_perc_50,
-        ) = (0.0, 0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0)
-        # --- FIX END ---
+        # Replaced placeholder values with calls to functions from feature_logic.py
+        # Note: Some features from the vectorized approach (e.g., rolling percentages) are not
+        # available in the live logic and are set to 0.
+        p1_win_perc, p1_surface_win_perc, _ = get_win_percentages(
+            self.df_matches, p1_id, surface, match_date
+        )
+        p1_matches_last_7, p1_matches_last_14 = get_recent_form(
+            self.df_matches, p1_id, match_date
+        )
+        p1_sets_last_7, p1_sets_last_14 = get_fatigue_features(
+            self.df_matches, p1_id, match_date
+        )
+        p1_form, p1_rolling_win_perc_20, p1_rolling_win_perc_50 = 0.0, 0.0, 0.0
 
+        p2_win_perc, p2_surface_win_perc, _ = get_win_percentages(
+            self.df_matches, p2_id, surface, match_date
+        )
+        p2_matches_last_7, p2_matches_last_14 = get_recent_form(
+            self.df_matches, p2_id, match_date
+        )
+        p2_sets_last_7, p2_sets_last_14 = get_fatigue_features(
+            self.df_matches, p2_id, match_date
+        )
+        p2_form, p2_rolling_win_perc_20, p2_rolling_win_perc_50 = 0.0, 0.0, 0.0
+
+        # Corrected the function call to remove the extra 'surface' argument
         h2h_p1_wins, h2h_p2_wins = get_h2h_stats_optimized(
             self.h2h_df, p1_id, p2_id, match_date
         )
+        # --- FIX END ---
 
         p1_implied_prob = 1 / p1_odds if p1_odds > 0 else 0
         p2_implied_prob = 1 / p2_odds if p2_odds > 0 else 0
