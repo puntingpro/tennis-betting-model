@@ -15,13 +15,14 @@ def validate_config(config: DictConfig) -> Dict[str, Any]:
         # Convert OmegaConf to a standard Python dict for Pydantic validation
         config_dict = OmegaConf.to_container(config, resolve=True)
 
-        # Ensure config_dict is a mapping before unpacking to satisfy mypy
+        # Ensure config_dict is a mapping before validation
         assert isinstance(
             config_dict, dict
         ), f"Config validation failed: expected a dict, but got {type(config_dict)}"
 
-        # Pass the validated dict to the Pydantic model
-        Config(**config_dict)
+        # Use Pydantic's model_validate method instead of ** unpacking
+        Config.model_validate(config_dict)
+
         log_info("✅ Configuration validation successful.")
         return cast(Dict[str, Any], config_dict)
     except ValidationError as e:
