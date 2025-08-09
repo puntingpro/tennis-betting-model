@@ -12,11 +12,14 @@ from src.tennis_betting_model.pipeline.flumine_strategy import TennisValueStrate
 from src.tennis_betting_model.utils.config_schema import Betting, LiveTradingParams
 from src.tennis_betting_model.utils.constants import BetSide
 
+# Import RiskManager to allow patching it
+
 
 class FlumineStrategyTest(unittest.TestCase):
     """Unit tests for the TennisValueStrategy class."""
 
-    def setUp(self):
+    @mock.patch("src.tennis_betting_model.pipeline.flumine_strategy.RiskManager")
+    def setUp(self, mock_risk_manager):
         """Set up mock dependencies and strategy instance for each test."""
         self.mock_market_processor = mock.Mock()
         self.mock_betting_config = Betting(
@@ -33,12 +36,11 @@ class FlumineStrategyTest(unittest.TestCase):
         )
         self.mock_market_filter = {"filter": "mock"}
 
-        # Use a temporary file for the processed bets log
         self.db_path = Path("./test_processed_bets.db")
         if self.db_path.exists():
             self.db_path.unlink()
 
-        # Instantiate the strategy
+        # Instantiate the strategy. The RiskManager is now automatically mocked.
         self.strategy = TennisValueStrategy(
             market_filter=self.mock_market_filter,
             market_processor=self.mock_market_processor,
@@ -47,14 +49,27 @@ class FlumineStrategyTest(unittest.TestCase):
             dry_run=False,
             processed_bets_log_path=str(self.db_path),
         )
+
+        # Keep a reference to the mocked RiskManager instance for use in tests
+        self.mock_risk_manager_instance = mock_risk_manager.return_value
+        self.strategy.risk_manager = self.mock_risk_manager_instance
+
+        self.mock_client = mock.Mock()
+        self.mock_client.account_funds.available_to_bet_balance = 1000.0
         self.strategy.clients = mock.Mock()
-        self.strategy.risk_manager = mock.Mock()
-        self.strategy.risk_manager.can_place_bet.return_value = True
+        self.strategy.clients.get_default.return_value = self.mock_client
 
     def tearDown(self):
         """Clean up the test database file after each test."""
         if self.db_path.exists():
             self.db_path.unlink()
+
+    def _create_mock_market(self):
+        """Helper to create a detailed mock market object for testing."""
+        mock_market = mock.Mock()
+        mock_market.market_catalogue.competition.name = "Wimbledon Grand Slam"
+        mock_market.market_catalogue.event.name = "Player A v Player B"
+        return mock_market
 
     def test_init(self):
         """Test strategy initialization."""
@@ -64,9 +79,8 @@ class FlumineStrategyTest(unittest.TestCase):
 
     def test_check_market_book_valid(self):
         """Test check_market_book returns True for a valid market."""
-        mock_market = mock.Mock()
+        mock_market = self._create_mock_market()
         mock_market_book = mock.Mock()
-        mock_market.market_catalogue.competition.name = "Wimbledon Grand Slam"
         mock_market_book.status = "OPEN"
         mock_market_book.inplay = False
         start_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
@@ -77,21 +91,21 @@ class FlumineStrategyTest(unittest.TestCase):
 
     def test_check_market_book_invalid_status(self):
         """Test check_market_book returns False for a closed market."""
-        mock_market = mock.Mock()
+        mock_market = self._create_mock_market()
         mock_market_book = mock.Mock(status="CLOSED")
         self.assertFalse(self.strategy.check_market_book(mock_market, mock_market_book))
 
     def test_check_market_book_inplay(self):
         """Test check_market_book returns False for an in-play market."""
-        mock_market = mock.Mock()
+        mock_market = self._create_mock_market()
         mock_market_book = mock.Mock(status="OPEN", inplay=True)
         self.assertFalse(self.strategy.check_market_book(mock_market, mock_market_book))
 
     def test_check_market_book_wrong_tournament(self):
         """Test check_market_book returns False for a non-profitable tournament."""
-        mock_market = mock.Mock()
-        mock_market_book = mock.Mock()
+        mock_market = self._create_mock_market()
         mock_market.market_catalogue.competition.name = "Local Fun Event"
+        mock_market_book = mock.Mock()
         mock_market_book.status = "OPEN"
         mock_market_book.inplay = False
         start_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
@@ -117,6 +131,7 @@ class FlumineStrategyTest(unittest.TestCase):
 
     def test_place_orders_from_bets(self):
         """Test the logic for placing an order from an identified value bet."""
+        self.mock_risk_manager_instance.can_place_bet.return_value = True
         mock_market = mock.Mock()
         mock_market.market_id = "1.234"
         mock_market.blotter.selection_exposure.return_value = 0.0
@@ -131,14 +146,10 @@ class FlumineStrategyTest(unittest.TestCase):
             }
         ]
 
-        with mock.patch.object(
-            self.strategy, "_get_live_bankroll", return_value=1000.0
-        ), mock.patch.object(Trade, "create_order") as mock_create_order:
+        with mock.patch.object(Trade, "create_order") as mock_create_order:
             self.strategy.place_orders_from_bets(mock_market, value_bets)
 
-            # Stake = bankroll * kelly_fraction * live_kelly_fraction
-            # 1000 * 0.1 * 0.1 = 10.0
-            stake = 10.0
+            stake = 10.0  # 1000 * 0.1 * 0.1
 
             mock_create_order.assert_called_once()
             call_args = mock_create_order.call_args[1]
@@ -153,6 +164,7 @@ class FlumineStrategyTest(unittest.TestCase):
     def test_place_orders_dry_run(self):
         """Test that no order is placed in dry-run mode."""
         self.strategy.dry_run = True
+        self.mock_risk_manager_instance.can_place_bet.return_value = True
         mock_market = mock.Mock()
         mock_market.market_id = "1.234"
         mock_market.blotter.selection_exposure.return_value = 0.0
@@ -165,12 +177,9 @@ class FlumineStrategyTest(unittest.TestCase):
                 "kelly_fraction": 0.1,
             }
         ]
-        with mock.patch.object(
-            self.strategy, "_get_live_bankroll", return_value=1000.0
-        ):
-            self.strategy.place_orders_from_bets(mock_market, value_bets)
-            mock_market.place_order.assert_not_called()
-            self.assertIn("1.234-567", self.strategy.processed_selections)
+        self.strategy.place_orders_from_bets(mock_market, value_bets)
+        mock_market.place_order.assert_not_called()
+        self.assertIn("1.234-567", self.strategy.processed_selections)
 
     def test_place_orders_already_processed(self):
         """Test that a bet on an already processed selection is not placed again."""
@@ -184,7 +193,7 @@ class FlumineStrategyTest(unittest.TestCase):
 
     def test_place_orders_risk_manager_blocks(self):
         """Test that the risk manager can block a bet."""
-        self.strategy.risk_manager.can_place_bet.return_value = False  # type: ignore
+        self.mock_risk_manager_instance.can_place_bet.return_value = False
         mock_market = mock.Mock()
         value_bets = [
             {
@@ -214,7 +223,7 @@ class FlumineStrategyTest(unittest.TestCase):
         mock_order = mock.Mock(status=OrderStatus.EXECUTION_COMPLETE, profit=10.0)
 
         self.strategy.process_orders(mock_market, [mock_order])
-        self.strategy.risk_manager.update_pnl.assert_called_with(10.0)  # type: ignore
+        self.mock_risk_manager_instance.update_pnl.assert_called_with(10.0)
 
 
 if __name__ == "__main__":

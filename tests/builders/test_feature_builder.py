@@ -21,11 +21,11 @@ def mock_builder_data():
 
     df_matches = pd.DataFrame(
         {
+            "match_id": ["m1"],  # Added missing match_id
             "tourney_date": pd.to_datetime(["2023-01-05"], utc=True),
             "surface": ["Hard"],
             "winner_historical_id": [101],
             "loser_historical_id": [102],
-            # --- FIX: Add the missing 'sets_played' column to the mock data ---
             "sets_played": [3],
         }
     )
