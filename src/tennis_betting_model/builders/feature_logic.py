@@ -1,125 +1,154 @@
 # src/tennis_betting_model/builders/feature_logic.py
-
+from typing import Tuple
 import pandas as pd
-from typing import cast, Tuple
+
+
+def get_win_percentages(
+    df_matches: pd.DataFrame, player_id: int, surface: str, match_date: pd.Timestamp
+) -> Tuple[float, float, float]:
+    """
+    Calculates overall, surface-specific, and recent win percentages for a player.
+    """
+    player_matches = df_matches[
+        (df_matches["winner_historical_id"] == player_id)
+        | (df_matches["loser_historical_id"] == player_id)
+    ].copy()
+
+    if player_matches.empty:
+        return 0.0, 0.0, 0.0
+
+    # Explicitly convert to datetime to ensure correct type for operations
+    player_matches["tourney_date"] = pd.to_datetime(
+        player_matches["tourney_date"], utc=True
+    )
+    player_matches_before_date = player_matches[
+        player_matches["tourney_date"] < match_date
+    ]
+
+    if player_matches_before_date.empty:
+        return 0.0, 0.0, 0.0
+
+    total_wins = (player_matches_before_date["winner_historical_id"] == player_id).sum()
+    total_matches = len(player_matches_before_date)
+    win_perc = total_wins / total_matches if total_matches > 0 else 0.0
+
+    surface_matches = player_matches_before_date[
+        player_matches_before_date["surface"] == surface
+    ]
+    surface_wins = (surface_matches["winner_historical_id"] == player_id).sum()
+    total_surface_matches = len(surface_matches)
+    surface_win_perc = (
+        surface_wins / total_surface_matches if total_surface_matches > 0 else 0.0
+    )
+
+    return win_perc, surface_win_perc, 0.0
 
 
 def get_h2h_stats_optimized(
-    h2h_df: pd.DataFrame, p1_id: int, p2_id: int, match_date: pd.Timestamp, surface: str
-) -> tuple[int, int]:
+    df_matches: pd.DataFrame, p1_id: int, p2_id: int, match_date: pd.Timestamp
+) -> Tuple[int, int]:
     """
-    Calculates point-in-time, surface-specific Head-to-Head (H2H) stats
-    using a pre-indexed DataFrame.
+    Calculates head-to-head wins between two players before a specific match date.
     """
-    if match_date.tzinfo is None:
-        match_date = match_date.tz_localize("UTC")
-
-    player1 = min(p1_id, p2_id)
-    player2 = max(p1_id, p2_id)
-
-    h2h_matches: pd.DataFrame = pd.DataFrame()
-    try:
-        h2h_matches_lookup = h2h_df.loc[(player1, player2)]
-
-        if isinstance(h2h_matches_lookup, pd.Series):
-            h2h_matches = h2h_matches_lookup.to_frame().T
-        else:
-            h2h_matches = cast(pd.DataFrame, h2h_matches_lookup)
-
-    except KeyError:
+    if df_matches.empty:
         return 0, 0
+
+    h2h_matches = df_matches[
+        (
+            (
+                (df_matches["winner_historical_id"] == p1_id)
+                & (df_matches["loser_historical_id"] == p2_id)
+            )
+            | (
+                (df_matches["winner_historical_id"] == p2_id)
+                & (df_matches["loser_historical_id"] == p1_id)
+            )
+        )
+    ].copy()
 
     if h2h_matches.empty:
         return 0, 0
 
-    # FIX: Ensure the 'tourney_date' column is timezone-aware before comparison
-    if h2h_matches["tourney_date"].dt.tz is None:
-        h2h_matches["tourney_date"] = pd.to_datetime(
-            h2h_matches["tourney_date"]
-        ).dt.tz_localize("UTC")
+    h2h_matches["tourney_date"] = pd.to_datetime(h2h_matches["tourney_date"], utc=True)
+    h2h_matches_before = h2h_matches[h2h_matches["tourney_date"] < match_date]
 
-    past_matches = h2h_matches[
-        (h2h_matches["tourney_date"] < match_date) & (h2h_matches["surface"] == surface)
-    ]
-
-    if past_matches.empty:
+    if h2h_matches_before.empty:
         return 0, 0
 
-    p1_wins = (past_matches["winner_historical_id"] == p1_id).sum()
-    p2_wins = (past_matches["winner_historical_id"] == p2_id).sum()
+    p1_wins = h2h_matches_before[
+        h2h_matches_before["winner_historical_id"] == p1_id
+    ].shape[0]
+    p2_wins = h2h_matches_before[
+        h2h_matches_before["winner_historical_id"] == p2_id
+    ].shape[0]
 
-    return int(p1_wins), int(p2_wins)
+    return p1_wins, p2_wins
 
 
-def get_player_stats_optimized(
-    player_match_df: pd.DataFrame,
-    player_id: int,
-    surface: str,
-    match_date: pd.Timestamp,
-    opponent_hand: str,
-) -> Tuple[float, float, float, int, int, int, int, float, float]:
+def get_fatigue_features(
+    df_matches: pd.DataFrame, player_id: int, match_date: pd.Timestamp
+) -> Tuple[int, int]:
     """
-    Calculates point-in-time stats for a player using a pre-indexed, player-centric DataFrame.
-    Now includes sets played for fatigue calculation and rolling averages.
+    Calculates fatigue metrics: sets played in the last 7 and 14 days.
     """
-    if match_date.tzinfo is None:
-        match_date = match_date.tz_localize("UTC")
-
-    all_player_matches: pd.DataFrame = pd.DataFrame()
-    try:
-        player_matches_lookup = player_match_df.loc[player_id]
-
-        if isinstance(player_matches_lookup, pd.Series):
-            all_player_matches = player_matches_lookup.to_frame().T
-        else:
-            all_player_matches = cast(pd.DataFrame, player_matches_lookup)
-
-    except KeyError:
-        return 0.0, 0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0
-
-    player_matches = all_player_matches[
-        pd.to_datetime(all_player_matches["tourney_date"]) < match_date
-    ]
+    player_matches = df_matches[
+        (df_matches["winner_historical_id"] == player_id)
+        | (df_matches["loser_historical_id"] == player_id)
+    ].copy()
 
     if player_matches.empty:
-        return 0.0, 0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0
+        return 0, 0
 
-    win_perc = float(player_matches["won"].mean())
+    # Ensure the date column is the correct type before calculations
+    tourney_dates = pd.to_datetime(player_matches["tourney_date"], utc=True)
 
-    surface_matches = player_matches[player_matches["surface"] == surface]
-    surface_win_perc = (
-        float(surface_matches["won"].mean()) if not surface_matches.empty else 0.0
-    )
+    recent_mask = (match_date - tourney_dates).dt.days <= 14
+    recent_matches = player_matches[recent_mask]
 
-    last_10 = player_matches.tail(10)
-    form_last_10 = float(last_10["won"].mean()) if not last_10.empty else 0.0
+    if recent_matches.empty:
+        return 0, 0
 
-    # Rolling averages for win percentage
-    rolling_win_perc_20 = (
-        player_matches["won"].rolling(window=20, min_periods=1).mean().iloc[-1]
-    )
-    rolling_win_perc_50 = (
-        player_matches["won"].rolling(window=50, min_periods=1).mean().iloc[-1]
-    )
+    # Re-create the date series for the filtered dataframe
+    recent_tourney_dates = pd.to_datetime(recent_matches["tourney_date"], utc=True)
 
-    time_since_matches = match_date - pd.to_datetime(player_matches["tourney_date"])
+    last_7_days_mask = (match_date - recent_tourney_dates).dt.days <= 7
+    last_7_days_matches = recent_matches[last_7_days_mask]
 
-    recent_matches_14_days = player_matches[time_since_matches.dt.days <= 14]
-    recent_matches_7_days = player_matches[time_since_matches.dt.days <= 7]
+    sets_last_7_days = int(last_7_days_matches["sets_played"].sum())
+    sets_last_14_days = int(recent_matches["sets_played"].sum())
 
-    matches_last_14_days = len(recent_matches_14_days)
-    matches_last_7_days = len(recent_matches_7_days)
-    sets_played_last_14_days = recent_matches_14_days["sets_played"].sum()
-    sets_played_last_7_days = recent_matches_7_days["sets_played"].sum()
+    return sets_last_7_days, sets_last_14_days
 
-    return (
-        win_perc,
-        surface_win_perc,
-        form_last_10,
-        int(matches_last_7_days),
-        int(matches_last_14_days),
-        int(sets_played_last_7_days),
-        int(sets_played_last_14_days),
-        float(rolling_win_perc_20),
-        float(rolling_win_perc_50),
-    )
+
+def get_recent_form(
+    df_matches: pd.DataFrame, player_id: int, match_date: pd.Timestamp
+) -> Tuple[int, int]:
+    """
+    Calculates recent form: matches played in the last 7 and 14 days.
+    """
+    player_matches = df_matches[
+        (df_matches["winner_historical_id"] == player_id)
+        | (df_matches["loser_historical_id"] == player_id)
+    ].copy()
+
+    if player_matches.empty:
+        return 0, 0
+
+    # Ensure the date column is the correct type before calculations
+    tourney_dates = pd.to_datetime(player_matches["tourney_date"], utc=True)
+
+    recent_mask = (match_date - tourney_dates).dt.days <= 14
+    recent_matches = player_matches[recent_mask]
+
+    if recent_matches.empty:
+        return 0, 0
+
+    matches_last_14_days = recent_matches.shape[0]
+
+    # Re-create the date series for the filtered dataframe
+    recent_tourney_dates = pd.to_datetime(recent_matches["tourney_date"], utc=True)
+
+    last_7_days_mask = (match_date - recent_tourney_dates).dt.days <= 7
+    matches_last_7_days = recent_matches[last_7_days_mask].shape[0]
+
+    return matches_last_7_days, matches_last_14_days
