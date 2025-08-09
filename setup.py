@@ -1,3 +1,4 @@
+# setup.py
 from setuptools import setup, find_packages
 
 # A list of dependencies for the project
@@ -10,11 +11,12 @@ install_deps = [
     "PyYAML",
     "requests",
     "betfairlightweight",
+    "flumine",  # Added missing dependency
     "pandera",
     "orjson",
     "bz2file",
     "thefuzz",
-    "rapidfuzz",  # Added new dependency
+    "rapidfuzz",
     "python-Levenshtein",
     "scikit-learn",
     "unidecode",
