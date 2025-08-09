@@ -35,9 +35,7 @@ class FeatureBuilder:
             & (self.df_rankings["ranking_date"] <= match_date)
         ]
         if not player_rankings.empty:
-            # CORRECTED: Explicitly cast the return value to int
             return int(player_rankings.iloc[-1]["rank"])
-        # CORRECTED: Explicitly cast the return value to int
         return int(self.elo_config.default_player_rank)
 
     def build_features(
